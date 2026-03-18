@@ -1,0 +1,83 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: windows-cargo-
+
+      - name: Build (release)
+        run: cargo build --release
+
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Get version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          Copy-Item "target\release\duper-disper.exe" "installer\duper-disper.exe" -Force
+          & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=${{ steps.version.outputs.VERSION }} installer\duper-disper.nsi
+          mkdir -p installer\output
+          Move-Item "installer\duper-disper-setup.exe" "installer\output\duper-disper-${{ steps.version.outputs.VERSION }}-setup.exe"
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "target\release\duper-disper.exe" -DestinationPath "installer\output\duper-disper-${{ steps.version.outputs.VERSION }}-portable.zip"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: duper-disper-windows
+          path: installer/output/*
+
+  # Publish release when a tag is pushed
+  release:
+    needs: build-windows
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: duper-disper-windows
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

@@ -9,8 +9,8 @@
 models/
 *.bin
 
-# Config (user-specific)
-config.toml
+# App config (user-specific, generated at runtime)
+/config.toml
 
 # IDE
 .idea/
