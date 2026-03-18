@@ -1185,7 +1185,6 @@ dependencies = [
  "enigo",
  "global-hotkey",
  "hound",
- "image 0.25.10",
  "reqwest",
  "screenshots",
  "serde",

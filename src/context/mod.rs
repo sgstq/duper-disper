@@ -123,15 +123,15 @@ fn get_surrounding_text_uia() -> Option<String> {
 #[cfg(windows)]
 fn capture_active_window_screenshot() -> Result<String> {
     use base64::Engine;
+    use screenshots::image::ImageOutputFormat;
     use std::io::Cursor;
 
     let screens = screenshots::Screen::all()?;
     if let Some(screen) = screens.first() {
         let image = screen.capture()?;
-        // Encode ImageBuffer to PNG bytes
         let mut png_bytes = Cursor::new(Vec::new());
         image
-            .write_to(&mut png_bytes, image::ImageFormat::Png)
+            .write_to(&mut png_bytes, ImageOutputFormat::Png)
             .map_err(|e| anyhow::anyhow!("Failed to encode screenshot as PNG: {}", e))?;
         let b64 = base64::engine::general_purpose::STANDARD.encode(png_bytes.into_inner());
         Ok(b64)

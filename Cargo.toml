@@ -58,7 +58,6 @@ windows = { version = "0.58", features = [
 ] }
 enigo = "0.2"
 screenshots = "0.8"
-image = { version = "0.25", default-features = false, features = ["png"] }
 
 [profile.release]
 opt-level = 3
