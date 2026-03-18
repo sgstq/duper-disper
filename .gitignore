@@ -1,0 +1,19 @@
+/target
+*.exe
+*.pdb
+*.dll
+*.so
+*.dylib
+
+# Model files
+models/
+*.bin
+
+# Config (user-specific)
+config.toml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
