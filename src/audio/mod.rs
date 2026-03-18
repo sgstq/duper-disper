@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, SampleFormat, SampleRate, StreamConfig};
+use cpal::{Device, SampleFormat, StreamConfig};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info};

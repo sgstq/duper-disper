@@ -1,5 +1,8 @@
 use anyhow::Result;
-use tracing::{debug, warn};
+#[cfg(windows)]
+use tracing::debug;
+#[cfg(not(windows))]
+use tracing::warn;
 
 /// Captured context about the active application and insertion point.
 #[derive(Debug, Clone, Default)]
@@ -120,12 +123,17 @@ fn get_surrounding_text_uia() -> Option<String> {
 #[cfg(windows)]
 fn capture_active_window_screenshot() -> Result<String> {
     use base64::Engine;
+    use std::io::Cursor;
 
     let screens = screenshots::Screen::all()?;
     if let Some(screen) = screens.first() {
         let image = screen.capture()?;
-        let png_data = image.to_png()?;
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&png_data);
+        // Encode ImageBuffer to PNG bytes
+        let mut png_bytes = Cursor::new(Vec::new());
+        image
+            .write_to(&mut png_bytes, image::ImageFormat::Png)
+            .map_err(|e| anyhow::anyhow!("Failed to encode screenshot as PNG: {}", e))?;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(png_bytes.into_inner());
         Ok(b64)
     } else {
         anyhow::bail!("No screens found")
