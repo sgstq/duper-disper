@@ -1,0 +1,65 @@
+[package]
+name = "duper-disper"
+version = "0.1.0"
+edition = "2021"
+description = "Fast push-to-talk voice transcription and refinement tool"
+
+[dependencies]
+# Audio capture
+cpal = "0.15"
+hound = "3.5"
+
+# Whisper transcription (local, via bindings to whisper.cpp)
+whisper-rs = "0.13"
+
+# LLM refinement (OpenAI-compatible API client)
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking", "multipart"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# System tray
+tray-icon = "0.19"
+
+# Cross-platform clipboard
+arboard = "3"
+
+# UI toolkit for overlay / settings
+eframe = "0.30"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Config
+toml = "0.8"
+dirs = "6"
+
+# Misc
+anyhow = "1"
+base64 = "0.22"
+
+# Windows-specific APIs (input simulation, context capture)
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_DataExchange",
+    "Win32_System_Ole",
+    "Win32_System_Com",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Accessibility",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
+enigo = "0.2"
+screenshots = "0.8"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

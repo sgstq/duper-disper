@@ -1,0 +1,19 @@
+/target
+*.exe
+*.pdb
+*.dll
+*.so
+*.dylib
+
+# Model files
+models/
+*.bin
+
+# App config (user-specific, generated at runtime)
+/config.toml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
