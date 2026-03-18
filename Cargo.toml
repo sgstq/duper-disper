@@ -20,8 +20,7 @@ serde_json = "1"
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
-# Global hotkeys & system tray
-global-hotkey = "0.6"
+# System tray
 tray-icon = "0.19"
 
 # Cross-platform clipboard

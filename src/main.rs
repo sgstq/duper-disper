@@ -1,14 +1,13 @@
 mod audio;
 mod config;
 mod context;
+mod hotkey;
 mod insertion;
 mod refinement;
 mod transcription;
 mod ui;
 
-use anyhow::{Context, Result};
-use global_hotkey::hotkey::{Code, HotKey, Modifiers};
-use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
+use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tracing::{error, info, warn};
@@ -76,14 +75,8 @@ fn main() -> Result<()> {
     // Initialize overlay
     let overlay = RecordingOverlay::new();
 
-    // Set up global hotkey
-    let hotkey_manager = GlobalHotKeyManager::new()
-        .map_err(|e| anyhow::anyhow!("Failed to create hotkey manager: {}", e))?;
-
-    let hotkey = parse_hotkey(&config.hotkey)?;
-    hotkey_manager
-        .register(hotkey)
-        .map_err(|e| anyhow::anyhow!("Failed to register hotkey: {}", e))?;
+    // Set up global hotkey via low-level keyboard hook
+    let hotkey_config = hotkey::parse_hotkey(&config.hotkey)?;
     info!("Registered hotkey: {}", config.hotkey);
 
     // Set up system tray
@@ -98,13 +91,15 @@ fn main() -> Result<()> {
     let running = Arc::new(AtomicBool::new(true));
     let is_recording = Arc::new(AtomicBool::new(false));
 
+    let hotkey_rx = hotkey::start_listener(hotkey_config, running.clone())?;
+
     info!("Ready! Hold {} to record, release to transcribe.", config.hotkey);
 
     // Main event loop
     while running.load(Ordering::SeqCst) {
         // Check hotkey events
-        if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
-            let pressed = event.state == global_hotkey::HotKeyState::Pressed;
+        if let Ok(event) = hotkey_rx.try_recv() {
+            let pressed = event == hotkey::HotkeyEvent::Pressed;
 
             if pressed && !is_recording.load(Ordering::SeqCst) {
                 // Start recording
@@ -210,86 +205,3 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn parse_hotkey(key_str: &str) -> Result<HotKey> {
-    let parts: Vec<&str> = key_str.split('+').map(|s| s.trim()).collect();
-    let mut modifiers = Modifiers::empty();
-    let mut code = None;
-
-    for part in &parts {
-        match part.to_lowercase().as_str() {
-            "ctrl" | "control" => modifiers |= Modifiers::CONTROL,
-            "alt" => modifiers |= Modifiers::ALT,
-            "shift" => modifiers |= Modifiers::SHIFT,
-            "super" | "win" | "meta" => modifiers |= Modifiers::SUPER,
-            key => {
-                code = Some(match key {
-                    "capslock" | "caps" => Code::CapsLock,
-                    "space" => Code::Space,
-                    "tab" => Code::Tab,
-                    "escape" | "esc" => Code::Escape,
-                    "f1" => Code::F1,
-                    "f2" => Code::F2,
-                    "f3" => Code::F3,
-                    "f4" => Code::F4,
-                    "f5" => Code::F5,
-                    "f6" => Code::F6,
-                    "f7" => Code::F7,
-                    "f8" => Code::F8,
-                    "f9" => Code::F9,
-                    "f10" => Code::F10,
-                    "f11" => Code::F11,
-                    "f12" => Code::F12,
-                    "insert" => Code::Insert,
-                    "pause" => Code::Pause,
-                    "scrolllock" => Code::ScrollLock,
-                    s if s.len() == 1 => {
-                        let c = s.chars().next().unwrap();
-                        match c {
-                            'a' => Code::KeyA,
-                            'b' => Code::KeyB,
-                            'c' => Code::KeyC,
-                            'd' => Code::KeyD,
-                            'e' => Code::KeyE,
-                            'f' => Code::KeyF,
-                            'g' => Code::KeyG,
-                            'h' => Code::KeyH,
-                            'i' => Code::KeyI,
-                            'j' => Code::KeyJ,
-                            'k' => Code::KeyK,
-                            'l' => Code::KeyL,
-                            'm' => Code::KeyM,
-                            'n' => Code::KeyN,
-                            'o' => Code::KeyO,
-                            'p' => Code::KeyP,
-                            'q' => Code::KeyQ,
-                            'r' => Code::KeyR,
-                            's' => Code::KeyS,
-                            't' => Code::KeyT,
-                            'u' => Code::KeyU,
-                            'v' => Code::KeyV,
-                            'w' => Code::KeyW,
-                            'x' => Code::KeyX,
-                            'y' => Code::KeyY,
-                            'z' => Code::KeyZ,
-                            '0' => Code::Digit0,
-                            '1' => Code::Digit1,
-                            '2' => Code::Digit2,
-                            '3' => Code::Digit3,
-                            '4' => Code::Digit4,
-                            '5' => Code::Digit5,
-                            '6' => Code::Digit6,
-                            '7' => Code::Digit7,
-                            '8' => Code::Digit8,
-                            '9' => Code::Digit9,
-                            _ => anyhow::bail!("Unsupported key: {}", s),
-                        }
-                    }
-                    _ => anyhow::bail!("Unknown key: {}", key),
-                });
-            }
-        }
-    }
-
-    let code = code.context("No key specified in hotkey string")?;
-    Ok(HotKey::new(Some(modifiers), code))
-}
