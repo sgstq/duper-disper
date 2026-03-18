@@ -1,5 +1,6 @@
 use crate::insertion::InsertionMethod;
 use crate::refinement::RefinementConfig;
+use crate::transcription::{CloudSttConfig, SttBackend};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -10,11 +11,17 @@ pub struct AppConfig {
     /// Global hotkey for push-to-talk (e.g., "CapsLock", "Ctrl+Shift+Space").
     pub hotkey: String,
 
-    /// Whisper model name (e.g., "base.en", "small", "medium", "large-v3").
+    /// STT backend: "local", "openai", "deepgram", "groq".
+    pub stt_backend: SttBackend,
+
+    /// Whisper model name for local backend (e.g., "base.en", "small", "medium", "large-v3").
     pub whisper_model: String,
 
-    /// Language code for Whisper (e.g., "en", "auto" for auto-detect).
+    /// Language code (e.g., "en", "auto" for auto-detect). Used by both local and cloud.
     pub language: String,
+
+    /// Cloud STT configuration (used when stt_backend is not "local").
+    pub cloud_stt: CloudSttConfig,
 
     /// How to insert text into the active app.
     pub insertion_method: String,
@@ -42,8 +49,10 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             hotkey: "CapsLock".to_string(),
+            stt_backend: SttBackend::Local,
             whisper_model: "base.en".to_string(),
             language: "en".to_string(),
+            cloud_stt: CloudSttConfig::default(),
             insertion_method: "clipboard".to_string(),
             enable_refinement: true,
             refinement: RefinementConfig::default(),

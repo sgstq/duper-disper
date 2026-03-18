@@ -35,19 +35,31 @@ fn main() -> Result<()> {
 
     // Load config
     let config = AppConfig::load()?;
-    info!("Config loaded: model={}, hotkey={}", config.whisper_model, config.hotkey);
+    info!("Config loaded: stt={:?}, hotkey={}", config.stt_backend, config.hotkey);
 
-    // Download/find whisper model
-    let models_dir = AppConfig::models_dir()?;
-    let model_path = transcription::ensure_model(&config.whisper_model, &models_dir)?;
-
-    // Initialize transcriber
-    let language = if config.language == "auto" {
-        None
-    } else {
-        Some(config.language.clone())
+    // Initialize transcriber based on configured backend
+    let transcriber = match config.stt_backend {
+        transcription::SttBackend::Local => {
+            let models_dir = AppConfig::models_dir()?;
+            let model_path = transcription::ensure_model(&config.whisper_model, &models_dir)?;
+            let language = if config.language == "auto" {
+                None
+            } else {
+                Some(config.language.clone())
+            };
+            Transcriber::new_local(&model_path, language)?
+        }
+        ref backend @ (transcription::SttBackend::OpenAI
+        | transcription::SttBackend::Deepgram
+        | transcription::SttBackend::Groq) => {
+            info!("Using cloud STT: {:?}", backend);
+            Transcriber::new_cloud(
+                backend.clone(),
+                config.cloud_stt.clone(),
+                config.language.clone(),
+            )?
+        }
     };
-    let transcriber = Transcriber::new(&model_path, language)?;
 
     // Initialize audio capture
     let audio = AudioCapture::new()?;

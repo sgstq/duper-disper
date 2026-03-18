@@ -1,82 +1,82 @@
-use anyhow::{Context, Result};
+pub mod cloud;
+pub mod local;
+
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tracing::{debug, info};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
-
-pub struct Transcriber {
-    ctx: WhisperContext,
-    language: Option<String>,
-}
-
-impl Transcriber {
-    /// Create a new transcriber from a ggml whisper model file.
-    pub fn new(model_path: &Path, language: Option<String>) -> Result<Self> {
-        info!("Loading Whisper model from {:?}", model_path);
-        let ctx = WhisperContext::new_with_params(
-            model_path.to_str().context("Invalid model path")?,
-            WhisperContextParameters::default(),
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to load Whisper model: {}", e))?;
-
-        info!("Whisper model loaded successfully");
-        Ok(Self { ctx, language })
-    }
-
-    /// Transcribe audio samples (mono f32, 16kHz).
-    pub fn transcribe(&self, samples: &[f32]) -> Result<TranscriptionResult> {
-        let mut state = self.ctx.create_state()
-            .map_err(|e| anyhow::anyhow!("Failed to create whisper state: {}", e))?;
-
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-
-        // Configure
-        params.set_n_threads(num_cpus());
-        params.set_translate(false);
-        params.set_no_timestamps(true);
-        params.set_print_special(false);
-        params.set_print_progress(false);
-        params.set_print_realtime(false);
-        params.set_print_timestamps(false);
-        params.set_single_segment(false);
-        params.set_suppress_blank(true);
-
-        if let Some(ref lang) = self.language {
-            params.set_language(Some(lang));
-        }
-
-        debug!("Running whisper inference on {} samples", samples.len());
-
-        state
-            .full(params, samples)
-            .map_err(|e| anyhow::anyhow!("Whisper inference failed: {}", e))?;
-
-        let num_segments = state.full_n_segments()
-            .map_err(|e| anyhow::anyhow!("Failed to get segments: {}", e))?;
-        let mut text = String::new();
-
-        for i in 0..num_segments {
-            if let Ok(segment) = state.full_get_segment_text(i) {
-                text.push_str(&segment);
-            }
-        }
-
-        let text = text.trim().to_string();
-        info!("Transcription complete: {} chars", text.len());
-
-        Ok(TranscriptionResult { text })
-    }
-}
+use tracing::info;
 
 #[derive(Debug, Clone)]
 pub struct TranscriptionResult {
     pub text: String,
 }
 
-fn num_cpus() -> i32 {
-    std::thread::available_parallelism()
-        .map(|n| n.get() as i32)
-        .unwrap_or(4)
-        .min(8) // cap at 8 threads for whisper
+/// Which STT backend to use.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum SttBackend {
+    /// Local whisper.cpp via whisper-rs.
+    Local,
+    /// OpenAI Whisper API (or any compatible endpoint).
+    OpenAI,
+    /// Deepgram cloud API.
+    Deepgram,
+    /// Groq (fast cloud whisper).
+    Groq,
+}
+
+impl Default for SttBackend {
+    fn default() -> Self {
+        Self::Local
+    }
+}
+
+/// Configuration for cloud STT providers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudSttConfig {
+    /// API endpoint URL. Leave empty to use provider defaults.
+    pub api_url: String,
+    /// API key for the cloud provider.
+    pub api_key: String,
+    /// Model name (provider-specific, e.g. "whisper-1", "whisper-large-v3", "nova-2").
+    pub model: String,
+}
+
+impl Default for CloudSttConfig {
+    fn default() -> Self {
+        Self {
+            api_url: String::new(),
+            api_key: String::new(),
+            model: String::new(),
+        }
+    }
+}
+
+/// Unified transcriber that delegates to the configured backend.
+pub enum Transcriber {
+    Local(local::LocalTranscriber),
+    Cloud(cloud::CloudTranscriber),
+}
+
+impl Transcriber {
+    /// Create a local (whisper.cpp) transcriber.
+    pub fn new_local(model_path: &Path, language: Option<String>) -> Result<Self> {
+        Ok(Self::Local(local::LocalTranscriber::new(model_path, language)?))
+    }
+
+    /// Create a cloud transcriber.
+    pub fn new_cloud(backend: SttBackend, config: CloudSttConfig, language: String) -> Result<Self> {
+        Ok(Self::Cloud(cloud::CloudTranscriber::new(backend, config, language)?))
+    }
+
+    /// Transcribe audio samples (mono f32, 16kHz).
+    /// For cloud backends, this encodes to WAV and uploads.
+    pub fn transcribe(&self, samples: &[f32]) -> Result<TranscriptionResult> {
+        match self {
+            Self::Local(t) => t.transcribe(samples),
+            Self::Cloud(t) => t.transcribe(samples),
+        }
+    }
 }
 
 /// Find or download a whisper model. Returns path to the model file.
@@ -96,9 +96,8 @@ pub fn ensure_model(model_name: &str, models_dir: &Path) -> Result<PathBuf> {
     );
     info!("Downloading model from {}", url);
 
-    // We'll download synchronously here since this is a one-time setup
     let response = reqwest::blocking::get(&url)
-        .context("Failed to download model")?;
+        .map_err(|e| anyhow::anyhow!("Failed to download model: {}", e))?;
 
     if !response.status().is_success() {
         anyhow::bail!("Failed to download model: HTTP {}", response.status());
