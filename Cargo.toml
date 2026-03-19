@@ -28,6 +28,7 @@ arboard = "3"
 
 # UI toolkit for overlay / settings
 eframe = "0.30"
+winit = "0.30"
 
 # Logging
 tracing = "0.1"

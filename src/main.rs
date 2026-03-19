@@ -1,3 +1,6 @@
+// Hide the console window on Windows release builds
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod audio;
 mod config;
 mod context;
@@ -22,13 +25,35 @@ use ui::overlay::RecordingOverlay;
 use ui::tray::{SystemTray, TrayCommand};
 
 fn main() -> Result<()> {
-    // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    // Initialize logging — write to file in release (no console), stderr in debug
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    if cfg!(not(debug_assertions)) {
+        // Release: log to file since there's no console
+        if let Ok(log_dir) = AppConfig::config_dir() {
+            let log_file = std::fs::File::create(log_dir.join("duper-disper.log"))
+                .unwrap_or_else(|_| {
+                    // Fall back to temp dir
+                    let tmp = std::env::temp_dir().join("duper-disper.log");
+                    std::fs::File::create(tmp).expect("Cannot create log file")
+                });
+            tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .with_writer(log_file)
+                .with_ansi(false)
+                .init();
+        } else {
+            tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .init();
+        }
+    } else {
+        // Debug: log to stderr (console)
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .init();
+    }
 
     info!("Duper Disper v{} starting", env!("CARGO_PKG_VERSION"));
 
@@ -90,6 +115,7 @@ fn main() -> Result<()> {
 
     let running = Arc::new(AtomicBool::new(true));
     let is_recording = Arc::new(AtomicBool::new(false));
+    let settings_open = Arc::new(AtomicBool::new(false));
 
     let hotkey_rx = hotkey::start_listener(hotkey_config, running.clone())?;
 
@@ -188,7 +214,7 @@ fn main() -> Result<()> {
                 }
                 TrayCommand::Settings => {
                     info!("Settings requested");
-                    // TODO: open settings window
+                    ui::settings::open_settings_window(settings_open.clone());
                 }
                 TrayCommand::ToggleRefinement => {
                     info!("Toggle refinement");
@@ -197,11 +223,33 @@ fn main() -> Result<()> {
             }
         }
 
-        // Don't spin the CPU
+        // Pump Win32 messages (required for tray icon menu to work) and avoid spinning CPU
+        pump_messages();
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
     info!("Duper Disper shutting down");
     Ok(())
+}
+
+/// Process pending Win32 messages. Required for the system tray context menu
+/// to appear when right-clicking the tray icon.
+#[cfg(windows)]
+fn pump_messages() {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
+    };
+    unsafe {
+        let mut msg = MSG::default();
+        while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn pump_messages() {
+    // No-op on non-Windows platforms
 }
 

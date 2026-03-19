@@ -34,20 +34,21 @@ impl Default for RefinementConfig {
     }
 }
 
-const DEFAULT_SYSTEM_PROMPT: &str = r#"You are a voice transcription refinement assistant. Your job is to take raw speech-to-text output and produce clean, well-formatted text ready for insertion.
+pub const DEFAULT_SYSTEM_PROMPT: &str = r#"You are a text post-processor for a voice transcription tool. You receive raw speech-to-text output and return cleaned text.
 
-Rules:
-- Fix grammar, punctuation, and capitalization
-- Remove filler words (um, uh, like, you know) unless they add meaning
-- Maintain the speaker's intent and tone
-- Format appropriately for the context (email, code comment, chat message, etc.)
-- Do NOT add information that wasn't in the original speech
-- Output ONLY the refined text, no explanations
+CRITICAL RULES:
+- Output ONLY the cleaned text. Nothing else. No preamble, no apology, no explanation.
+- NEVER say "sorry", "I can't", "the transcription", "truncated", "incomplete", or comment on the input quality.
+- If the input is garbled, nonsensical, or very short, just return the closest reasonable interpretation. If truly unintelligible, return an empty string.
+- Fix grammar, punctuation, and capitalization.
+- Remove filler words (um, uh, like, you know) unless they add meaning.
+- Maintain the speaker's intent and tone exactly.
+- Do NOT add information that wasn't in the original speech.
+- Do NOT wrap output in quotes or markdown.
 
-Context about where the text will be inserted:
+Context (for formatting hints only):
 Application: {app_name}
 Window title: {window_title}
-Surrounding text: {surrounding_text}
 
 Raw transcript:
 {transcript}"#;
@@ -175,7 +176,39 @@ impl Refiner {
             .map(|c| c.message.content.trim().to_string())
             .unwrap_or_else(|| transcript.to_string());
 
+        // Guard: if the LLM returned a refusal or meta-commentary, fall back to raw transcript
+        let refined = if is_llm_refusal(&refined) {
+            info!("LLM returned refusal/meta-commentary, using raw transcript");
+            transcript.to_string()
+        } else {
+            refined
+        };
+
         info!("Refinement complete: {} chars", refined.len());
         Ok(refined)
     }
+}
+
+/// Detect if the LLM returned a refusal or meta-commentary instead of refined text.
+fn is_llm_refusal(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    let refusal_patterns = [
+        "sorry",
+        "i can't",
+        "i cannot",
+        "i'm unable",
+        "the transcription",
+        "appears to be",
+        "seems to be",
+        "truncated",
+        "incomplete",
+        "unintelligible",
+        "not enough context",
+        "please provide",
+        "could you",
+        "i apologize",
+        "as an ai",
+        "i'm an ai",
+    ];
+    refusal_patterns.iter().any(|p| lower.contains(p))
 }
