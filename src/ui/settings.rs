@@ -4,6 +4,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tracing::{error, info};
 
+#[cfg(target_os = "windows")]
+use winit::platform::windows::EventLoopBuilderExtWindows;
+
 /// Launch the settings window on a background thread.
 /// Returns a handle that signals when the window is open.
 pub fn open_settings_window(is_open: Arc<AtomicBool>) {
@@ -34,6 +37,11 @@ pub fn open_settings_window(is_open: Arc<AtomicBool>) {
                     .with_inner_size([520.0, 580.0])
                     .with_min_inner_size([420.0, 400.0])
                     .with_title("Duper Disper - Settings"),
+                // Allow eframe to create an event loop on a non-main thread
+                #[cfg(target_os = "windows")]
+                event_loop_builder: Some(Box::new(|builder| {
+                    builder.with_any_thread(true);
+                })),
                 ..Default::default()
             };
 
