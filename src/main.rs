@@ -223,11 +223,33 @@ fn main() -> Result<()> {
             }
         }
 
-        // Don't spin the CPU
+        // Pump Win32 messages (required for tray icon menu to work) and avoid spinning CPU
+        pump_messages();
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
     info!("Duper Disper shutting down");
     Ok(())
+}
+
+/// Process pending Win32 messages. Required for the system tray context menu
+/// to appear when right-clicking the tray icon.
+#[cfg(windows)]
+fn pump_messages() {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
+    };
+    unsafe {
+        let mut msg = MSG::default();
+        while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn pump_messages() {
+    // No-op on non-Windows platforms
 }
 
