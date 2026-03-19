@@ -92,17 +92,18 @@ FunctionEnd
 Section "Install"
     SetOutPath "$INSTDIR"
 
-    ; Main binary
+    ; Main binary and icon
     File "duper-disper.exe"
+    File "icon.ico"
 
     ; Create Start Menu shortcuts
     CreateDirectory "$SMPROGRAMS\Duper Disper"
-    CreateShortCut "$SMPROGRAMS\Duper Disper\Duper Disper.lnk" "$INSTDIR\duper-disper.exe"
+    CreateShortCut "$SMPROGRAMS\Duper Disper\Duper Disper.lnk" "$INSTDIR\duper-disper.exe" "" "$INSTDIR\icon.ico"
     CreateShortCut "$SMPROGRAMS\Duper Disper\Uninstall.lnk" "$INSTDIR\uninstall.exe"
 
     ; Create Desktop shortcut only if user opted in
     ${If} $CreateDesktopShortcut == "1"
-        CreateShortCut "$DESKTOP\Duper Disper.lnk" "$INSTDIR\duper-disper.exe"
+        CreateShortCut "$DESKTOP\Duper Disper.lnk" "$INSTDIR\duper-disper.exe" "" "$INSTDIR\icon.ico"
     ${EndIf}
 
     ; Auto-start with Windows (optional, via registry)
@@ -129,6 +130,7 @@ Section "Uninstall"
 
     ; Remove files
     Delete "$INSTDIR\duper-disper.exe"
+    Delete "$INSTDIR\icon.ico"
     Delete "$INSTDIR\uninstall.exe"
 
     ; Remove shortcuts
