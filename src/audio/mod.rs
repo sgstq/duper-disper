@@ -179,6 +179,16 @@ pub fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     output
 }
 
+/// Compute the root-mean-square (RMS) energy of audio samples.
+/// Returns a value in [0.0, 1.0] for normalized f32 audio.
+pub fn rms_energy(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let sum_sq: f64 = samples.iter().map(|&s| (s as f64) * (s as f64)).sum();
+    (sum_sq / samples.len() as f64).sqrt() as f32
+}
+
 /// Save samples to a WAV file (for debugging).
 pub fn save_wav(samples: &[f32], sample_rate: u32, path: &str) -> Result<()> {
     let spec = hound::WavSpec {
@@ -324,6 +334,36 @@ mod tests {
         let result = resample(&[0.5], 44100, 16000);
         // Single sample should still produce at least something
         assert!(!result.is_empty());
+    }
+
+    // ---- rms_energy tests ----
+
+    #[test]
+    fn rms_energy_silence_is_zero() {
+        assert_eq!(rms_energy(&[0.0; 1000]), 0.0);
+    }
+
+    #[test]
+    fn rms_energy_empty_is_zero() {
+        assert_eq!(rms_energy(&[]), 0.0);
+    }
+
+    #[test]
+    fn rms_energy_full_scale_sine() {
+        // RMS of a sine wave is 1/sqrt(2) ≈ 0.707
+        let samples: Vec<f32> = (0..16000)
+            .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16000.0).sin())
+            .collect();
+        let rms = rms_energy(&samples);
+        assert!((rms - 0.707).abs() < 0.01, "RMS was {}", rms);
+    }
+
+    #[test]
+    fn rms_energy_quiet_audio_below_threshold() {
+        // Very quiet audio (amplitude 0.001) should have RMS well below 0.005
+        let samples: Vec<f32> = vec![0.001; 1000];
+        let rms = rms_energy(&samples);
+        assert!(rms < 0.005, "RMS was {}", rms);
     }
 
     #[test]

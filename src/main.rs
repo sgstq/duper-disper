@@ -150,13 +150,22 @@ fn main() -> Result<()> {
                     continue;
                 }
 
+                // Check if audio is essentially silence (Whisper hallucinates on silence)
+                let rms = audio::rms_energy(&samples);
+                if rms < 0.005 {
+                    info!("Audio is silence (RMS={:.6}), skipping transcription", rms);
+                    overlay.hide();
+                    continue;
+                }
+
                 // Resample to 16kHz for Whisper
                 let samples_16k =
                     audio::resample(&samples, audio.sample_rate(), 16000);
 
-                info!("Captured {} samples ({}s at source rate)",
+                info!("Captured {} samples ({}s at source rate, RMS={:.4})",
                     samples.len(),
-                    samples.len() as f32 / audio.sample_rate() as f32
+                    samples.len() as f32 / audio.sample_rate() as f32,
+                    rms
                 );
 
                 // Transcribe
