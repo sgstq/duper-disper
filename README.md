@@ -9,7 +9,7 @@ Download the latest release from the [Releases page](https://github.com/sgstq/du
 - **Installer** — `duper-disper-x.x.x-setup.exe` — guided setup with Start Menu shortcut and uninstaller
 - **Portable** — `duper-disper-x.x.x-portable.zip` — standalone executable, no installation needed
 
-## Disklamer 
+### Warning
 <p align="center">
   <b>ALL CODE AND SCRIPTS IN THIS REPOSITORY—EVEN THOSE BASED ON REAL DOCUMENTATION—ARE ENTIRELY EXPERIMENTAL. ALL LOGIC WAS HALLUCINATED BY MATRIX MULTIPLICATIONS….. HAPHAZARDLY. THE FOLLOWING REPOSITORY CONTAINS UNTESTED CODE AND DUE TO ITS CONTENT IT SHOULD NOT BE USED ANYWHERE BY ANYONE ■</b>
 </p>
