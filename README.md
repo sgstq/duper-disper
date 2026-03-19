@@ -2,6 +2,13 @@
 
 A fast, native push-to-talk voice transcription tool built in Rust. Inspired by SuperWhisper.
 
+## Installation
+
+Download the latest release from the [Releases page](https://github.com/sgstq/duper-disper/releases/latest):
+
+- **Installer** — `duper-disper-x.x.x-setup.exe` — guided setup with Start Menu shortcut and uninstaller
+- **Portable** — `duper-disper-x.x.x-portable.zip` — standalone executable, no installation needed
+
 ## Disklamer 
 <p align="center">
   <b>ALL CODE AND SCRIPTS IN THIS REPOSITORY—EVEN THOSE BASED ON REAL DOCUMENTATION—ARE ENTIRELY EXPERIMENTAL. ALL LOGIC WAS HALLUCINATED BY MATRIX MULTIPLICATIONS….. HAPHAZARDLY. THE FOLLOWING REPOSITORY CONTAINS UNTESTED CODE AND DUE TO ITS CONTENT IT SHOULD NOT BE USED ANYWHERE BY ANYONE ■</b>
@@ -77,7 +84,7 @@ Models are automatically downloaded on first use. Available models:
 
 ## Roadmap
 
-- [ ] Settings GUI window
+- [x] Settings GUI window
 - [ ] macOS support
 - [ ] UI Automation for better surrounding text capture
 - [ ] Voice activity detection (auto-stop)
