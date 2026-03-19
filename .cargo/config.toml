@@ -1,0 +1,10 @@
+# Cross-compilation config
+# To cross-compile from Linux to Windows (limited - native deps like whisper.cpp may fail):
+#   cargo build --target x86_64-pc-windows-gnu
+#
+# For full Windows builds with installer, use:
+#   - GitHub Actions CI (see .github/workflows/build.yml)
+#   - Or build natively on Windows: .\installer\build.ps1 -Release
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
