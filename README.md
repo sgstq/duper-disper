@@ -2,6 +2,12 @@
 
 A fast, native push-to-talk voice transcription tool built in Rust. Inspired by SuperWhisper.
 
+## Disklamer 
+<p align="center">
+  <b>ALL CODE AND SCRIPTS IN THIS REPOSITORY—EVEN THOSE BASED ON REAL DOCUMENTATION—ARE ENTIRELY EXPERIMENTAL. ALL LOGIC WAS HALLUCINATED BY MATRIX MULTIPLICATIONS….. HAPHAZARDLY. THE FOLLOWING REPOSITORY CONTAINS UNTESTED CODE AND DUE TO ITS CONTENT IT SHOULD NOT BE USED ANYWHERE BY ANYONE ■</b>
+</p>
+
+---
 ## Features
 
 - **Push-to-talk** — Hold a configurable hotkey to record, release to transcribe and insert
