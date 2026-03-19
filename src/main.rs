@@ -153,7 +153,7 @@ fn main() -> Result<()> {
 
                 // Check if audio is essentially silence (Whisper hallucinates on silence)
                 let rms = audio::rms_energy(&samples);
-                if rms < 0.005 {
+                if rms < 0.02 {
                     info!("Audio is silence (RMS={:.6}), skipping transcription", rms);
                     overlay.hide();
                     continue;
@@ -174,6 +174,12 @@ fn main() -> Result<()> {
                     Ok(result) => {
                         if result.text.is_empty() {
                             warn!("Empty transcription, skipping");
+                            overlay.hide();
+                            continue;
+                        }
+
+                        if transcription::is_hallucination(&result.text) {
+                            warn!("Detected Whisper hallucination: {:?}, skipping", result.text);
                             overlay.hide();
                             continue;
                         }

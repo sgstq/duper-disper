@@ -83,6 +83,33 @@ impl Transcriber {
     }
 }
 
+/// Known Whisper hallucination phrases produced on silent or near-silent audio.
+const WHISPER_HALLUCINATIONS: &[&str] = &[
+    "thank you",
+    "thanks for watching",
+    "thank you for watching",
+    "thanks for listening",
+    "thank you for listening",
+    "subtitles by",
+    "subtitled by",
+    "you",
+    "bye",
+    "the end",
+];
+
+/// Returns true if the transcription looks like a Whisper hallucination
+/// (a short, known phrase that Whisper produces on silence).
+pub fn is_hallucination(text: &str) -> bool {
+    let normalized = text
+        .trim()
+        .trim_end_matches(|c: char| c == '.' || c == '!' || c == ',' || c == '?')
+        .to_lowercase();
+
+    WHISPER_HALLUCINATIONS
+        .iter()
+        .any(|&h| normalized == h)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,6 +133,32 @@ mod tests {
             text: "Hello world".to_string(),
         };
         assert_eq!(result.text, "Hello world");
+    }
+
+    #[test]
+    fn hallucination_detects_thank_you() {
+        assert!(is_hallucination("Thank you."));
+        assert!(is_hallucination("thank you"));
+        assert!(is_hallucination(" Thank you. "));
+        assert!(is_hallucination("Thank you!"));
+        assert!(is_hallucination("Thank you,"));
+    }
+
+    #[test]
+    fn hallucination_detects_other_phrases() {
+        assert!(is_hallucination("Thanks for watching."));
+        assert!(is_hallucination("Subtitles by"));
+        assert!(is_hallucination("Bye."));
+        assert!(is_hallucination("You"));
+        assert!(is_hallucination("The end."));
+    }
+
+    #[test]
+    fn hallucination_rejects_real_speech() {
+        assert!(!is_hallucination("Thank you for the update on the project"));
+        assert!(!is_hallucination("Please send me the report"));
+        assert!(!is_hallucination("Hello world"));
+        assert!(!is_hallucination("I need to thank you for your help"));
     }
 
     #[test]
