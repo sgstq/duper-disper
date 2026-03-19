@@ -90,6 +90,7 @@ fn main() -> Result<()> {
 
     let running = Arc::new(AtomicBool::new(true));
     let is_recording = Arc::new(AtomicBool::new(false));
+    let settings_open = Arc::new(AtomicBool::new(false));
 
     let hotkey_rx = hotkey::start_listener(hotkey_config, running.clone())?;
 
@@ -188,7 +189,7 @@ fn main() -> Result<()> {
                 }
                 TrayCommand::Settings => {
                     info!("Settings requested");
-                    // TODO: open settings window
+                    ui::settings::open_settings_window(settings_open.clone());
                 }
                 TrayCommand::ToggleRefinement => {
                     info!("Toggle refinement");
