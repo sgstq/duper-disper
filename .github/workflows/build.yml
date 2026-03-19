@@ -62,22 +62,14 @@ jobs:
           name: duper-disper-windows
           path: installer/output/*
 
-  # Publish release when a tag is pushed
-  release:
-    needs: build-windows
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: duper-disper-windows
-          path: dist
-
+      # Create or update the GitHub Release directly from the build job
+      # This avoids a separate job that can fail if artifacts aren't ready
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: installer/output/*
           generate_release_notes: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
