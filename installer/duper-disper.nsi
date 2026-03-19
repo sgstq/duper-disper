@@ -1,4 +1,6 @@
 !include "MUI2.nsh"
+!include "nsDialogs.nsh"
+!include "LogicLib.nsh"
 
 ; --- General ---
 Name "Duper Disper"
@@ -12,9 +14,15 @@ RequestExecutionLevel admin
 !define MUI_ICON "icon.ico"
 !define MUI_UNICON "icon.ico"
 
-; --- Pages ---
+; --- Finish page: option to run the app after install ---
+!define MUI_FINISHPAGE_RUN "$INSTDIR\duper-disper.exe"
+!define MUI_FINISHPAGE_RUN_TEXT "Run Duper Disper"
+!define MUI_FINISHPAGE_RUN_PARAMETERS "--settings"
+
+; --- Pages (order matters) ---
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
+Page custom DesktopShortcutPage DesktopShortcutPageLeave
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
@@ -22,6 +30,63 @@ RequestExecutionLevel admin
 !insertmacro MUI_UNPAGE_INSTFILES
 
 !insertmacro MUI_LANGUAGE "English"
+
+; --- Variables ---
+Var DesktopShortcutCheckbox
+Var CreateDesktopShortcut
+
+; --- Detect running instance and offer to terminate ---
+Function .onInit
+    StrCpy $CreateDesktopShortcut "1"
+
+    ; Check if duper-disper.exe is running
+    FindWindow $0 "" "" 0
+    nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq duper-disper.exe" /FO CSV /NH'
+    Pop $0 ; exit code
+    Pop $1 ; output
+
+    ; tasklist outputs "INFO: No tasks..." when process is not found
+    StrCpy $2 $1 4
+    ${If} $2 != "INFO"
+    ${AndIf} $1 != ""
+        ; Process is running — ask user
+        MessageBox MB_YESNO|MB_ICONQUESTION \
+            "Duper Disper is currently running.$\n$\nDo you want to close it and continue with the installation?" \
+            IDYES kill_it
+        ; User chose No — abort installer
+        Abort
+    kill_it:
+        nsExec::ExecToLog 'taskkill /F /IM duper-disper.exe'
+        Sleep 1000
+    ${EndIf}
+FunctionEnd
+
+; --- Custom page for desktop shortcut option ---
+Function DesktopShortcutPage
+    nsDialogs::Create 1018
+    Pop $0
+    ${If} $0 == error
+        Abort
+    ${EndIf}
+
+    ${NSD_CreateLabel} 0 0 100% 24u "Choose additional options:"
+    Pop $0
+
+    ${NSD_CreateCheckbox} 12u 30u 100% 12u "Create a desktop shortcut"
+    Pop $DesktopShortcutCheckbox
+    ${NSD_SetState} $DesktopShortcutCheckbox ${BST_CHECKED}
+
+    nsDialogs::Show
+FunctionEnd
+
+Function DesktopShortcutPageLeave
+    ${NSD_GetState} $DesktopShortcutCheckbox $0
+    ${If} $0 == ${BST_CHECKED}
+        StrCpy $CreateDesktopShortcut "1"
+    ${Else}
+        StrCpy $CreateDesktopShortcut "0"
+    ${EndIf}
+FunctionEnd
 
 ; --- Installer ---
 Section "Install"
@@ -35,8 +100,10 @@ Section "Install"
     CreateShortCut "$SMPROGRAMS\Duper Disper\Duper Disper.lnk" "$INSTDIR\duper-disper.exe"
     CreateShortCut "$SMPROGRAMS\Duper Disper\Uninstall.lnk" "$INSTDIR\uninstall.exe"
 
-    ; Create Desktop shortcut
-    CreateShortCut "$DESKTOP\Duper Disper.lnk" "$INSTDIR\duper-disper.exe"
+    ; Create Desktop shortcut only if user opted in
+    ${If} $CreateDesktopShortcut == "1"
+        CreateShortCut "$DESKTOP\Duper Disper.lnk" "$INSTDIR\duper-disper.exe"
+    ${EndIf}
 
     ; Auto-start with Windows (optional, via registry)
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "DuperDisper" "$INSTDIR\duper-disper.exe"
