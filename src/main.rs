@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tracing::{error, info, warn};
 
 use duper_disper::audio::{self, AudioCapture, RecordingBuffer};
@@ -17,6 +17,12 @@ use duper_disper::ui::overlay::RecordingOverlay;
 use duper_disper::ui::tray::{SystemTray, TrayCommand};
 
 fn main() -> Result<()> {
+    // If launched as settings subprocess, just run the settings UI and exit
+    if std::env::args().any(|a| a == "--settings") {
+        return duper_disper::ui::settings::run_settings_window()
+            .map_err(|e| anyhow::anyhow!("Settings window error: {}", e));
+    }
+
     // Initialize logging — write to file in release (no console), stderr in debug
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
@@ -107,7 +113,7 @@ fn main() -> Result<()> {
 
     let running = Arc::new(AtomicBool::new(true));
     let is_recording = Arc::new(AtomicBool::new(false));
-    let settings_open = Arc::new(AtomicBool::new(false));
+    let settings_child: Arc<Mutex<Option<std::process::Child>>> = Arc::new(Mutex::new(None));
 
     let hotkey_rx = hotkey::start_listener(hotkey_config, running.clone())?;
 
@@ -206,7 +212,7 @@ fn main() -> Result<()> {
                 }
                 TrayCommand::Settings => {
                     info!("Settings requested");
-                    ui::settings::open_settings_window(settings_open.clone());
+                    ui::settings::open_settings_window(&settings_child);
                 }
                 TrayCommand::ToggleRefinement => {
                     info!("Toggle refinement");

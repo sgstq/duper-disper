@@ -1,65 +1,76 @@
 use crate::config::AppConfig;
 use eframe::egui;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::Mutex;
 use tracing::{error, info};
 
 #[cfg(target_os = "windows")]
 use winit::platform::windows::EventLoopBuilderExtWindows;
 
-/// Launch the settings window on a background thread.
-/// Returns a handle that signals when the window is open.
-pub fn open_settings_window(is_open: Arc<AtomicBool>) {
-    if is_open.load(Ordering::SeqCst) {
-        info!("Settings window already open");
-        return;
+/// Launch the settings window as a child process.
+/// Uses a subprocess so the winit event loop can be created fresh each time.
+pub fn open_settings_window(child: &Mutex<Option<std::process::Child>>) {
+    let mut guard = child.lock().unwrap();
+
+    // Check if a settings process is already running
+    if let Some(ref mut proc) = *guard {
+        match proc.try_wait() {
+            Ok(Some(_)) => {
+                // Process has exited, allow reopening
+            }
+            Ok(None) => {
+                info!("Settings window already open");
+                return;
+            }
+            Err(e) => {
+                error!("Failed to check settings process: {}", e);
+            }
+        }
     }
 
-    is_open.store(true, Ordering::SeqCst);
-    let open_flag = is_open.clone();
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            error!("Cannot determine current exe path: {}", e);
+            return;
+        }
+    };
 
-    std::thread::Builder::new()
-        .name("settings-ui".into())
-        .spawn(move || {
-            let config = match AppConfig::load() {
-                Ok(c) => c,
-                Err(e) => {
-                    error!("Failed to load config for settings UI: {}", e);
-                    open_flag.store(false, Ordering::SeqCst);
-                    return;
-                }
-            };
+    match std::process::Command::new(exe).arg("--settings").spawn() {
+        Ok(proc) => {
+            info!("Settings subprocess started (pid={})", proc.id());
+            *guard = Some(proc);
+        }
+        Err(e) => {
+            error!("Failed to spawn settings subprocess: {}", e);
+        }
+    }
+}
 
-            let app = SettingsApp::new(config);
+/// Run the settings window in the current process (used by `--settings` subprocess).
+pub fn run_settings_window() -> Result<(), eframe::Error> {
+    let config = AppConfig::load().unwrap_or_default();
+    let app = SettingsApp::new(config);
 
-            let options = eframe::NativeOptions {
-                viewport: egui::ViewportBuilder::default()
-                    .with_inner_size([520.0, 580.0])
-                    .with_min_inner_size([420.0, 400.0])
-                    .with_title("Duper Disper - Settings"),
-                // Allow eframe to create an event loop on a non-main thread
-                #[cfg(target_os = "windows")]
-                event_loop_builder: Some(Box::new(|builder| {
-                    builder.with_any_thread(true);
-                })),
-                ..Default::default()
-            };
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([520.0, 580.0])
+            .with_min_inner_size([420.0, 400.0])
+            .with_title("Duper Disper - Settings"),
+        #[cfg(target_os = "windows")]
+        event_loop_builder: Some(Box::new(|builder| {
+            builder.with_any_thread(true);
+        })),
+        ..Default::default()
+    };
 
-            if let Err(e) = eframe::run_native(
-                "Duper Disper Settings",
-                options,
-                Box::new(|cc| {
-                    configure_style(&cc.egui_ctx);
-                    Ok(Box::new(app))
-                }),
-            ) {
-                error!("Settings window error: {}", e);
-            }
-
-            open_flag.store(false, Ordering::SeqCst);
-            info!("Settings window closed");
-        })
-        .expect("Failed to spawn settings UI thread");
+    eframe::run_native(
+        "Duper Disper Settings",
+        options,
+        Box::new(|cc| {
+            configure_style(&cc.egui_ctx);
+            Ok(Box::new(app))
+        }),
+    )
 }
 
 fn configure_style(ctx: &egui::Context) {
