@@ -1,3 +1,6 @@
+// Hide the console window on Windows release builds
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod audio;
 mod config;
 mod context;
@@ -22,13 +25,35 @@ use ui::overlay::RecordingOverlay;
 use ui::tray::{SystemTray, TrayCommand};
 
 fn main() -> Result<()> {
-    // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    // Initialize logging — write to file in release (no console), stderr in debug
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    if cfg!(not(debug_assertions)) {
+        // Release: log to file since there's no console
+        if let Ok(log_dir) = AppConfig::config_dir() {
+            let log_file = std::fs::File::create(log_dir.join("duper-disper.log"))
+                .unwrap_or_else(|_| {
+                    // Fall back to temp dir
+                    let tmp = std::env::temp_dir().join("duper-disper.log");
+                    std::fs::File::create(tmp).expect("Cannot create log file")
+                });
+            tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .with_writer(log_file)
+                .with_ansi(false)
+                .init();
+        } else {
+            tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .init();
+        }
+    } else {
+        // Debug: log to stderr (console)
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .init();
+    }
 
     info!("Duper Disper v{} starting", env!("CARGO_PKG_VERSION"));
 
