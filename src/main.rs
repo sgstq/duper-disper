@@ -14,6 +14,7 @@ use duper_disper::refinement::Refiner;
 use duper_disper::transcription::{self, Transcriber};
 use duper_disper::hotkey;
 use duper_disper::ui::overlay::RecordingOverlay;
+use duper_disper::ui::settings;
 use duper_disper::ui::tray::{SystemTray, TrayCommand};
 
 fn main() -> Result<()> {
@@ -221,7 +222,7 @@ fn main() -> Result<()> {
                 }
                 TrayCommand::Settings => {
                     info!("Settings requested");
-                    ui::settings::open_settings_window(&settings_child);
+                    settings::open_settings_window(&settings_child);
                 }
                 TrayCommand::ToggleRefinement => {
                     info!("Toggle refinement");
