@@ -1,28 +1,20 @@
 // Hide the console window on Windows release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod audio;
-mod config;
-mod context;
-mod hotkey;
-mod insertion;
-mod refinement;
-mod transcription;
-mod ui;
-
 use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
-use audio::{AudioCapture, RecordingBuffer};
-use config::AppConfig;
-use context::capture_context;
-use insertion::insert_text;
-use refinement::Refiner;
-use transcription::Transcriber;
-use ui::overlay::RecordingOverlay;
-use ui::tray::{SystemTray, TrayCommand};
+use duper_disper::audio::{self, AudioCapture, RecordingBuffer};
+use duper_disper::config::AppConfig;
+use duper_disper::context::capture_context;
+use duper_disper::insertion::insert_text;
+use duper_disper::refinement::Refiner;
+use duper_disper::transcription::{self, Transcriber};
+use duper_disper::hotkey;
+use duper_disper::ui::overlay::RecordingOverlay;
+use duper_disper::ui::tray::{SystemTray, TrayCommand};
 
 fn main() -> Result<()> {
     // Initialize logging — write to file in release (no console), stderr in debug

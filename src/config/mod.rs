@@ -116,3 +116,160 @@ impl AppConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_has_expected_values() {
+        let config = AppConfig::default();
+        assert_eq!(config.hotkey, "CapsLock");
+        assert_eq!(config.stt_backend, SttBackend::Local);
+        assert_eq!(config.whisper_model, "base.en");
+        assert_eq!(config.language, "en");
+        assert_eq!(config.insertion_method, "clipboard");
+        assert!(config.enable_refinement);
+        assert!(!config.capture_screenshots);
+        assert!(config.audio_device.is_empty());
+        assert!(config.sound_feedback);
+        assert!(config.show_overlay);
+    }
+
+    #[test]
+    fn insertion_method_clipboard_default() {
+        let config = AppConfig::default();
+        assert_eq!(config.insertion_method(), InsertionMethod::Clipboard);
+    }
+
+    #[test]
+    fn insertion_method_clipboard_explicit() {
+        let mut config = AppConfig::default();
+        config.insertion_method = "clipboard".to_string();
+        assert_eq!(config.insertion_method(), InsertionMethod::Clipboard);
+    }
+
+    #[test]
+    fn insertion_method_typing() {
+        let mut config = AppConfig::default();
+        config.insertion_method = "typing".to_string();
+        assert_eq!(config.insertion_method(), InsertionMethod::SimulateTyping);
+    }
+
+    #[test]
+    fn insertion_method_simulate() {
+        let mut config = AppConfig::default();
+        config.insertion_method = "simulate".to_string();
+        assert_eq!(config.insertion_method(), InsertionMethod::SimulateTyping);
+    }
+
+    #[test]
+    fn insertion_method_case_insensitive() {
+        let mut config = AppConfig::default();
+        config.insertion_method = "Typing".to_string();
+        assert_eq!(config.insertion_method(), InsertionMethod::SimulateTyping);
+
+        config.insertion_method = "CLIPBOARD".to_string();
+        assert_eq!(config.insertion_method(), InsertionMethod::Clipboard);
+    }
+
+    #[test]
+    fn insertion_method_unknown_defaults_to_clipboard() {
+        let mut config = AppConfig::default();
+        config.insertion_method = "unknown".to_string();
+        assert_eq!(config.insertion_method(), InsertionMethod::Clipboard);
+
+        config.insertion_method = "".to_string();
+        assert_eq!(config.insertion_method(), InsertionMethod::Clipboard);
+    }
+
+    #[test]
+    fn config_serialization_roundtrip() {
+        let config = AppConfig::default();
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let deserialized: AppConfig = toml::from_str(&toml_str).unwrap();
+
+        assert_eq!(deserialized.hotkey, config.hotkey);
+        assert_eq!(deserialized.whisper_model, config.whisper_model);
+        assert_eq!(deserialized.language, config.language);
+        assert_eq!(deserialized.insertion_method, config.insertion_method);
+        assert_eq!(deserialized.enable_refinement, config.enable_refinement);
+        assert_eq!(deserialized.capture_screenshots, config.capture_screenshots);
+        assert_eq!(deserialized.sound_feedback, config.sound_feedback);
+        assert_eq!(deserialized.show_overlay, config.show_overlay);
+    }
+
+    #[test]
+    fn config_deserializes_custom_values() {
+        let toml_str = r#"
+            hotkey = "F9"
+            stt_backend = "openai"
+            whisper_model = "large-v3"
+            language = "auto"
+            insertion_method = "typing"
+            enable_refinement = false
+            capture_screenshots = true
+            audio_device = "Microphone (USB Audio)"
+            sound_feedback = false
+            show_overlay = false
+
+            [cloud_stt]
+            api_url = "https://api.openai.com/v1/audio/transcriptions"
+            api_key = "sk-test"
+            model = "whisper-1"
+
+            [refinement]
+            api_url = "https://api.openai.com/v1/chat/completions"
+            api_key = "sk-refine"
+            model = "gpt-4o-mini"
+            system_prompt = "Custom prompt {transcript}"
+            use_screenshot = true
+            max_tokens = 4096
+        "#;
+
+        let config: AppConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.hotkey, "F9");
+        assert_eq!(config.stt_backend, SttBackend::OpenAI);
+        assert_eq!(config.whisper_model, "large-v3");
+        assert_eq!(config.language, "auto");
+        assert_eq!(config.insertion_method, "typing");
+        assert!(!config.enable_refinement);
+        assert!(config.capture_screenshots);
+        assert_eq!(config.audio_device, "Microphone (USB Audio)");
+        assert!(!config.sound_feedback);
+        assert!(!config.show_overlay);
+        assert_eq!(config.cloud_stt.api_key, "sk-test");
+        assert_eq!(config.refinement.model, "gpt-4o-mini");
+        assert!(config.refinement.use_screenshot);
+        assert_eq!(config.refinement.max_tokens, 4096);
+    }
+
+    #[test]
+    fn cloud_stt_config_defaults() {
+        let config = CloudSttConfig::default();
+        assert!(config.api_url.is_empty());
+        assert!(config.api_key.is_empty());
+        assert!(config.model.is_empty());
+    }
+
+    #[test]
+    fn stt_backend_default_is_local() {
+        assert_eq!(SttBackend::default(), SttBackend::Local);
+    }
+
+    #[test]
+    fn stt_backend_serialization() {
+        assert_eq!(serde_json::to_string(&SttBackend::Local).unwrap(), "\"local\"");
+        assert_eq!(serde_json::to_string(&SttBackend::OpenAI).unwrap(), "\"openai\"");
+        assert_eq!(serde_json::to_string(&SttBackend::Deepgram).unwrap(), "\"deepgram\"");
+        assert_eq!(serde_json::to_string(&SttBackend::Groq).unwrap(), "\"groq\"");
+    }
+
+    #[test]
+    fn stt_backend_deserialization() {
+        assert_eq!(serde_json::from_str::<SttBackend>("\"local\"").unwrap(), SttBackend::Local);
+        assert_eq!(serde_json::from_str::<SttBackend>("\"openai\"").unwrap(), SttBackend::OpenAI);
+        assert_eq!(serde_json::from_str::<SttBackend>("\"deepgram\"").unwrap(), SttBackend::Deepgram);
+        assert_eq!(serde_json::from_str::<SttBackend>("\"groq\"").unwrap(), SttBackend::Groq);
+    }
+}

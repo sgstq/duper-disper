@@ -120,6 +120,59 @@ fn get_surrounding_text_uia() -> Option<String> {
     None
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn captured_context_default_is_empty() {
+        let ctx = CapturedContext::default();
+        assert!(ctx.app_name.is_empty());
+        assert!(ctx.window_title.is_empty());
+        assert!(ctx.surrounding_text.is_empty());
+        assert!(ctx.screenshot_base64.is_none());
+    }
+
+    #[test]
+    fn captured_context_clone() {
+        let ctx = CapturedContext {
+            app_name: "chrome.exe".to_string(),
+            window_title: "Google".to_string(),
+            surrounding_text: "hello".to_string(),
+            screenshot_base64: Some("abc123".to_string()),
+        };
+        let cloned = ctx.clone();
+        assert_eq!(cloned.app_name, "chrome.exe");
+        assert_eq!(cloned.window_title, "Google");
+        assert_eq!(cloned.surrounding_text, "hello");
+        assert_eq!(cloned.screenshot_base64, Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn captured_context_debug_format() {
+        let ctx = CapturedContext::default();
+        let debug = format!("{:?}", ctx);
+        assert!(debug.contains("CapturedContext"));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn capture_context_stub_returns_empty() {
+        let ctx = capture_context(false);
+        assert!(ctx.app_name.is_empty());
+        assert!(ctx.window_title.is_empty());
+        assert!(ctx.surrounding_text.is_empty());
+        assert!(ctx.screenshot_base64.is_none());
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn capture_context_stub_ignores_screenshot_flag() {
+        let ctx = capture_context(true);
+        assert!(ctx.screenshot_base64.is_none(), "Stub should not capture screenshots");
+    }
+}
+
 #[cfg(windows)]
 fn capture_active_window_screenshot() -> Result<String> {
     use base64::Engine;

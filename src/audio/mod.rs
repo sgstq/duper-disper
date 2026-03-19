@@ -194,3 +194,145 @@ pub fn save_wav(samples: &[f32], sample_rate: u32, path: &str) -> Result<()> {
     writer.finalize()?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- RecordingBuffer tests ----
+
+    #[test]
+    fn buffer_new_is_empty() {
+        let buf = RecordingBuffer::new();
+        assert_eq!(buf.sample_count(), 0);
+        assert!(!buf.is_recording());
+    }
+
+    #[test]
+    fn buffer_start_sets_recording_flag() {
+        let buf = RecordingBuffer::new();
+        buf.start();
+        assert!(buf.is_recording());
+    }
+
+    #[test]
+    fn buffer_stop_clears_recording_flag() {
+        let buf = RecordingBuffer::new();
+        buf.start();
+        buf.stop();
+        assert!(!buf.is_recording());
+    }
+
+    #[test]
+    fn buffer_accumulates_samples_while_recording() {
+        let buf = RecordingBuffer::new();
+        buf.start();
+        buf.push_samples(&[0.1, 0.2, 0.3]);
+        buf.push_samples(&[0.4, 0.5]);
+        assert_eq!(buf.sample_count(), 5);
+    }
+
+    #[test]
+    fn buffer_ignores_samples_when_not_recording() {
+        let buf = RecordingBuffer::new();
+        // Not started yet
+        buf.push_samples(&[0.1, 0.2, 0.3]);
+        assert_eq!(buf.sample_count(), 0);
+    }
+
+    #[test]
+    fn buffer_ignores_samples_after_stop() {
+        let buf = RecordingBuffer::new();
+        buf.start();
+        buf.push_samples(&[0.1, 0.2]);
+        buf.stop();
+        buf.push_samples(&[0.3, 0.4]);
+        assert_eq!(buf.sample_count(), 2);
+    }
+
+    #[test]
+    fn buffer_take_samples_returns_all_and_clears() {
+        let buf = RecordingBuffer::new();
+        buf.start();
+        buf.push_samples(&[0.1, 0.2, 0.3]);
+        let samples = buf.take_samples();
+        assert_eq!(samples, vec![0.1, 0.2, 0.3]);
+        assert_eq!(buf.sample_count(), 0);
+    }
+
+    #[test]
+    fn buffer_start_clears_previous_samples() {
+        let buf = RecordingBuffer::new();
+        buf.start();
+        buf.push_samples(&[0.1, 0.2]);
+        buf.stop();
+        buf.start(); // Should clear
+        assert_eq!(buf.sample_count(), 0);
+    }
+
+    #[test]
+    fn buffer_clone_shares_state() {
+        let buf = RecordingBuffer::new();
+        let buf2 = buf.clone();
+        buf.start();
+        buf2.push_samples(&[1.0, 2.0]);
+        assert_eq!(buf.sample_count(), 2);
+    }
+
+    // ---- resample tests ----
+
+    #[test]
+    fn resample_same_rate_returns_copy() {
+        let samples = vec![0.1, 0.2, 0.3, 0.4];
+        let result = resample(&samples, 16000, 16000);
+        assert_eq!(result, samples);
+    }
+
+    #[test]
+    fn resample_downsample_halves_length() {
+        let samples: Vec<f32> = (0..1000).map(|i| (i as f32) / 1000.0).collect();
+        let result = resample(&samples, 48000, 16000);
+        // 48000->16000 is 3:1, so ~333 samples
+        let expected_len = (1000.0 * 16000.0 / 48000.0) as usize;
+        assert_eq!(result.len(), expected_len);
+    }
+
+    #[test]
+    fn resample_upsample_increases_length() {
+        let samples: Vec<f32> = (0..100).map(|i| (i as f32) / 100.0).collect();
+        let result = resample(&samples, 16000, 48000);
+        assert!(result.len() > samples.len());
+        let expected_len = (100.0 * 48000.0 / 16000.0) as usize;
+        assert_eq!(result.len(), expected_len);
+    }
+
+    #[test]
+    fn resample_preserves_first_sample() {
+        let samples = vec![0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
+        let result = resample(&samples, 48000, 16000);
+        assert!((result[0] - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn resample_empty_input() {
+        let result = resample(&[], 44100, 16000);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn resample_single_sample() {
+        let result = resample(&[0.5], 44100, 16000);
+        // Single sample should still produce at least something
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn resample_interpolates_linearly() {
+        // Simple case: 2:1 downsample
+        let samples = vec![0.0, 1.0, 0.0, 1.0];
+        let result = resample(&samples, 2, 1);
+        // At ratio 2:1, output[0] = samples[0] = 0.0, output[1] = samples[2] = 0.0
+        assert_eq!(result.len(), 2);
+        assert!((result[0] - 0.0).abs() < 0.01);
+    }
+}

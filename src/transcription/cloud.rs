@@ -5,6 +5,7 @@ use tracing::{debug, info};
 use super::{CloudSttConfig, SttBackend, TranscriptionResult};
 
 /// Cloud-based transcriber supporting OpenAI Whisper API, Deepgram, and Groq.
+#[derive(Debug)]
 pub struct CloudTranscriber {
     backend: SttBackend,
     config: CloudSttConfig,
@@ -259,4 +260,87 @@ fn encode_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
     }
     writer.finalize()?;
     Ok(cursor.into_inner())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_wav_produces_valid_wav() {
+        let samples: Vec<f32> = (0..1600).map(|i| (i as f32 * 0.001).sin()).collect();
+        let wav_data = encode_wav(&samples, 16000).unwrap();
+
+        // WAV files start with "RIFF"
+        assert_eq!(&wav_data[..4], b"RIFF");
+        // Should contain "WAVE" marker
+        assert_eq!(&wav_data[8..12], b"WAVE");
+        // Should have reasonable size (header + 16-bit samples)
+        assert!(wav_data.len() > 44); // WAV header is 44 bytes
+    }
+
+    #[test]
+    fn encode_wav_empty_samples() {
+        let wav_data = encode_wav(&[], 16000).unwrap();
+        assert_eq!(&wav_data[..4], b"RIFF");
+        // Only header, no sample data beyond standard WAV structure
+    }
+
+    #[test]
+    fn encode_wav_clamps_extreme_values() {
+        // Values beyond [-1.0, 1.0] should be clamped
+        let samples = vec![-2.0, -1.0, 0.0, 1.0, 2.0];
+        let wav_data = encode_wav(&samples, 16000).unwrap();
+        assert!(wav_data.len() > 44);
+
+        // Decode back to verify clamping
+        let cursor = std::io::Cursor::new(wav_data);
+        let mut reader = hound::WavReader::new(cursor).unwrap();
+        let decoded: Vec<i16> = reader.samples::<i16>().map(|s| s.unwrap()).collect();
+        assert_eq!(decoded.len(), 5);
+        assert_eq!(decoded[0], -32768); // clamped from -2.0
+        assert_eq!(decoded[1], -32767); // -1.0 * 32767
+        assert_eq!(decoded[2], 0);      // 0.0
+        assert_eq!(decoded[3], 32767);  // 1.0 * 32767 (clamped)
+        assert_eq!(decoded[4], 32767);  // clamped from 2.0
+    }
+
+    #[test]
+    fn encode_wav_preserves_sample_count() {
+        let samples: Vec<f32> = vec![0.0; 500];
+        let wav_data = encode_wav(&samples, 44100).unwrap();
+        let cursor = std::io::Cursor::new(wav_data);
+        let reader = hound::WavReader::new(cursor).unwrap();
+        assert_eq!(reader.len(), 500);
+    }
+
+    #[test]
+    fn encode_wav_preserves_sample_rate() {
+        let wav_data = encode_wav(&[0.0], 44100).unwrap();
+        let cursor = std::io::Cursor::new(wav_data);
+        let reader = hound::WavReader::new(cursor).unwrap();
+        assert_eq!(reader.spec().sample_rate, 44100);
+    }
+
+    #[test]
+    fn encode_wav_is_mono_16bit() {
+        let wav_data = encode_wav(&[0.5], 16000).unwrap();
+        let cursor = std::io::Cursor::new(wav_data);
+        let reader = hound::WavReader::new(cursor).unwrap();
+        let spec = reader.spec();
+        assert_eq!(spec.channels, 1);
+        assert_eq!(spec.bits_per_sample, 16);
+        assert_eq!(spec.sample_format, hound::SampleFormat::Int);
+    }
+
+    #[test]
+    fn cloud_transcriber_requires_api_key() {
+        let result = CloudTranscriber::new(
+            SttBackend::OpenAI,
+            CloudSttConfig::default(), // empty api_key
+            "en".to_string(),
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("API key required"));
+    }
 }

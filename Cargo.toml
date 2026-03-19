@@ -4,13 +4,19 @@ version = "0.1.5"
 edition = "2021"
 description = "Fast push-to-talk voice transcription and refinement tool"
 
+[features]
+default = ["ui", "audio-capture", "local-stt"]
+ui = ["dep:tray-icon", "dep:eframe", "dep:winit"]
+audio-capture = ["dep:cpal"]
+local-stt = ["dep:whisper-rs"]
+
 [dependencies]
-# Audio capture
-cpal = "0.15"
+# Audio capture (optional, needs ALSA)
+cpal = { version = "0.15", optional = true }
 hound = "3.5"
 
-# Whisper transcription (local, via bindings to whisper.cpp)
-whisper-rs = "0.13"
+# Whisper transcription (optional, needs whisper.cpp)
+whisper-rs = { version = "0.13", optional = true }
 
 # LLM refinement (OpenAI-compatible API client)
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking", "multipart"], default-features = false }
@@ -20,15 +26,15 @@ serde_json = "1"
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
-# System tray
-tray-icon = "0.19"
+# System tray (optional, needs GTK)
+tray-icon = { version = "0.19", optional = true }
 
 # Cross-platform clipboard
 arboard = "3"
 
-# UI toolkit for overlay / settings
-eframe = "0.30"
-winit = "0.30"
+# UI toolkit for overlay / settings (optional, needs GTK/Pango)
+eframe = { version = "0.30", optional = true }
+winit = { version = "0.30", optional = true }
 
 # Logging
 tracing = "0.1"
@@ -58,6 +64,11 @@ windows = { version = "0.58", features = [
 ] }
 enigo = "0.2"
 screenshots = "0.8"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+wiremock = "0.6"
+serde_json = "1"
 
 [profile.release]
 opt-level = 3

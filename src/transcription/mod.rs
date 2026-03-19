@@ -1,4 +1,5 @@
 pub mod cloud;
+#[cfg(feature = "local-stt")]
 pub mod local;
 
 use anyhow::Result;
@@ -54,12 +55,14 @@ impl Default for CloudSttConfig {
 
 /// Unified transcriber that delegates to the configured backend.
 pub enum Transcriber {
+    #[cfg(feature = "local-stt")]
     Local(local::LocalTranscriber),
     Cloud(cloud::CloudTranscriber),
 }
 
 impl Transcriber {
     /// Create a local (whisper.cpp) transcriber.
+    #[cfg(feature = "local-stt")]
     pub fn new_local(model_path: &Path, language: Option<String>) -> Result<Self> {
         Ok(Self::Local(local::LocalTranscriber::new(model_path, language)?))
     }
@@ -73,8 +76,44 @@ impl Transcriber {
     /// For cloud backends, this encodes to WAV and uploads.
     pub fn transcribe(&self, samples: &[f32]) -> Result<TranscriptionResult> {
         match self {
+            #[cfg(feature = "local-stt")]
             Self::Local(t) => t.transcribe(samples),
             Self::Cloud(t) => t.transcribe(samples),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stt_backend_default_is_local() {
+        assert_eq!(SttBackend::default(), SttBackend::Local);
+    }
+
+    #[test]
+    fn cloud_stt_config_defaults_are_empty() {
+        let config = CloudSttConfig::default();
+        assert!(config.api_url.is_empty());
+        assert!(config.api_key.is_empty());
+        assert!(config.model.is_empty());
+    }
+
+    #[test]
+    fn transcription_result_holds_text() {
+        let result = TranscriptionResult {
+            text: "Hello world".to_string(),
+        };
+        assert_eq!(result.text, "Hello world");
+    }
+
+    #[test]
+    fn stt_backend_roundtrip_serialization() {
+        for backend in [SttBackend::Local, SttBackend::OpenAI, SttBackend::Deepgram, SttBackend::Groq] {
+            let json = serde_json::to_string(&backend).unwrap();
+            let deserialized: SttBackend = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, backend);
         }
     }
 }
