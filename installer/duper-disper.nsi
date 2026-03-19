@@ -17,7 +17,7 @@ RequestExecutionLevel admin
 ; --- Finish page: option to run the app after install ---
 !define MUI_FINISHPAGE_RUN "$INSTDIR\duper-disper.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Run Duper Disper"
-!define MUI_FINISHPAGE_RUN_PARAMETERS "--settings"
+!define MUI_FINISHPAGE_RUN_PARAMETERS "--show-settings"
 
 ; --- Pages (order matters) ---
 !insertmacro MUI_PAGE_WELCOME

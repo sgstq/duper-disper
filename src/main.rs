@@ -116,6 +116,12 @@ fn main() -> Result<()> {
     let is_recording = Arc::new(AtomicBool::new(false));
     let settings_child: Arc<Mutex<Option<std::process::Child>>> = Arc::new(Mutex::new(None));
 
+    // If launched with --show-settings, open settings window on startup
+    // (unlike --settings, the main app keeps running)
+    if std::env::args().any(|a| a == "--show-settings") {
+        settings::open_settings_window(&settings_child);
+    }
+
     let hotkey_rx = hotkey::start_listener(hotkey_config, running.clone())?;
 
     info!("Ready! Hold {} to record, release to transcribe.", config.hotkey);
