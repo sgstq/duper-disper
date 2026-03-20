@@ -193,3 +193,102 @@ fn run_hook_thread(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_capslock() {
+        let hk = parse_hotkey("CapsLock").unwrap();
+        assert_eq!(hk.vk_code, 0x14);
+        assert!(hk.suppress);
+    }
+
+    #[test]
+    fn parse_capslock_aliases() {
+        let hk = parse_hotkey("caps").unwrap();
+        assert_eq!(hk.vk_code, 0x14);
+        assert!(hk.suppress);
+    }
+
+    #[test]
+    fn parse_capslock_case_insensitive() {
+        let hk = parse_hotkey("CAPSLOCK").unwrap();
+        assert_eq!(hk.vk_code, 0x14);
+    }
+
+    #[test]
+    fn parse_function_keys() {
+        for (i, expected) in (1u32..=12).zip(0x70u32..=0x7B) {
+            let hk = parse_hotkey(&format!("F{}", i)).unwrap();
+            assert_eq!(hk.vk_code, expected, "F{} should map to 0x{:02X}", i, expected);
+            assert!(!hk.suppress, "F keys should not suppress");
+        }
+    }
+
+    #[test]
+    fn parse_special_keys() {
+        let hk = parse_hotkey("ScrollLock").unwrap();
+        assert_eq!(hk.vk_code, 0x91);
+        assert!(hk.suppress);
+
+        let hk = parse_hotkey("Pause").unwrap();
+        assert_eq!(hk.vk_code, 0x13);
+        assert!(!hk.suppress);
+
+        let hk = parse_hotkey("Insert").unwrap();
+        assert_eq!(hk.vk_code, 0x2D);
+
+        let hk = parse_hotkey("Space").unwrap();
+        assert_eq!(hk.vk_code, 0x20);
+
+        let hk = parse_hotkey("Tab").unwrap();
+        assert_eq!(hk.vk_code, 0x09);
+
+        let hk = parse_hotkey("Escape").unwrap();
+        assert_eq!(hk.vk_code, 0x1B);
+
+        let hk = parse_hotkey("esc").unwrap();
+        assert_eq!(hk.vk_code, 0x1B);
+    }
+
+    #[test]
+    fn parse_letter_keys() {
+        for c in 'a'..='z' {
+            let hk = parse_hotkey(&c.to_string()).unwrap();
+            let expected = 0x41 + (c as u32 - 'a' as u32);
+            assert_eq!(hk.vk_code, expected, "'{}' should map to 0x{:02X}", c, expected);
+            assert!(!hk.suppress);
+        }
+    }
+
+    #[test]
+    fn parse_digit_keys() {
+        for c in '0'..='9' {
+            let hk = parse_hotkey(&c.to_string()).unwrap();
+            let expected = 0x30 + (c as u32 - '0' as u32);
+            assert_eq!(hk.vk_code, expected);
+        }
+    }
+
+    #[test]
+    fn parse_unknown_key_returns_error() {
+        assert!(parse_hotkey("UnknownKey").is_err());
+        assert!(parse_hotkey("Ctrl+Shift+Space").is_err());
+        assert!(parse_hotkey("").is_err());
+    }
+
+    #[test]
+    fn parse_trims_whitespace() {
+        let hk = parse_hotkey("  CapsLock  ").unwrap();
+        assert_eq!(hk.vk_code, 0x14);
+    }
+
+    #[test]
+    fn hotkey_event_equality() {
+        assert_eq!(HotkeyEvent::Pressed, HotkeyEvent::Pressed);
+        assert_eq!(HotkeyEvent::Released, HotkeyEvent::Released);
+        assert_ne!(HotkeyEvent::Pressed, HotkeyEvent::Released);
+    }
+}

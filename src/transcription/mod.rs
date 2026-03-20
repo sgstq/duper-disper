@@ -1,4 +1,5 @@
 pub mod cloud;
+#[cfg(feature = "local-stt")]
 pub mod local;
 
 use anyhow::Result;
@@ -54,12 +55,14 @@ impl Default for CloudSttConfig {
 
 /// Unified transcriber that delegates to the configured backend.
 pub enum Transcriber {
+    #[cfg(feature = "local-stt")]
     Local(local::LocalTranscriber),
     Cloud(cloud::CloudTranscriber),
 }
 
 impl Transcriber {
     /// Create a local (whisper.cpp) transcriber.
+    #[cfg(feature = "local-stt")]
     pub fn new_local(model_path: &Path, language: Option<String>) -> Result<Self> {
         Ok(Self::Local(local::LocalTranscriber::new(model_path, language)?))
     }
@@ -73,8 +76,97 @@ impl Transcriber {
     /// For cloud backends, this encodes to WAV and uploads.
     pub fn transcribe(&self, samples: &[f32]) -> Result<TranscriptionResult> {
         match self {
+            #[cfg(feature = "local-stt")]
             Self::Local(t) => t.transcribe(samples),
             Self::Cloud(t) => t.transcribe(samples),
+        }
+    }
+}
+
+/// Known Whisper hallucination phrases produced on silent or near-silent audio.
+const WHISPER_HALLUCINATIONS: &[&str] = &[
+    "thank you",
+    "thanks for watching",
+    "thank you for watching",
+    "thanks for listening",
+    "thank you for listening",
+    "subtitles by",
+    "subtitled by",
+    "you",
+    "bye",
+    "the end",
+];
+
+/// Returns true if the transcription looks like a Whisper hallucination
+/// (a short, known phrase that Whisper produces on silence).
+pub fn is_hallucination(text: &str) -> bool {
+    let normalized = text
+        .trim()
+        .trim_end_matches(|c: char| c == '.' || c == '!' || c == ',' || c == '?')
+        .to_lowercase();
+
+    WHISPER_HALLUCINATIONS
+        .iter()
+        .any(|&h| normalized == h)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stt_backend_default_is_local() {
+        assert_eq!(SttBackend::default(), SttBackend::Local);
+    }
+
+    #[test]
+    fn cloud_stt_config_defaults_are_empty() {
+        let config = CloudSttConfig::default();
+        assert!(config.api_url.is_empty());
+        assert!(config.api_key.is_empty());
+        assert!(config.model.is_empty());
+    }
+
+    #[test]
+    fn transcription_result_holds_text() {
+        let result = TranscriptionResult {
+            text: "Hello world".to_string(),
+        };
+        assert_eq!(result.text, "Hello world");
+    }
+
+    #[test]
+    fn hallucination_detects_thank_you() {
+        assert!(is_hallucination("Thank you."));
+        assert!(is_hallucination("thank you"));
+        assert!(is_hallucination(" Thank you. "));
+        assert!(is_hallucination("Thank you!"));
+        assert!(is_hallucination("Thank you,"));
+    }
+
+    #[test]
+    fn hallucination_detects_other_phrases() {
+        assert!(is_hallucination("Thanks for watching."));
+        assert!(is_hallucination("Subtitles by"));
+        assert!(is_hallucination("Bye."));
+        assert!(is_hallucination("You"));
+        assert!(is_hallucination("The end."));
+    }
+
+    #[test]
+    fn hallucination_rejects_real_speech() {
+        assert!(!is_hallucination("Thank you for the update on the project"));
+        assert!(!is_hallucination("Please send me the report"));
+        assert!(!is_hallucination("Hello world"));
+        assert!(!is_hallucination("I need to thank you for your help"));
+    }
+
+    #[test]
+    fn stt_backend_roundtrip_serialization() {
+        for backend in [SttBackend::Local, SttBackend::OpenAI, SttBackend::Deepgram, SttBackend::Groq] {
+            let json = serde_json::to_string(&backend).unwrap();
+            let deserialized: SttBackend = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, backend);
         }
     }
 }

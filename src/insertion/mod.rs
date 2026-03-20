@@ -63,6 +63,33 @@ fn insert_via_typing(text: &str) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insertion_method_enum_equality() {
+        assert_eq!(InsertionMethod::Clipboard, InsertionMethod::Clipboard);
+        assert_eq!(InsertionMethod::SimulateTyping, InsertionMethod::SimulateTyping);
+        assert_ne!(InsertionMethod::Clipboard, InsertionMethod::SimulateTyping);
+    }
+
+    #[test]
+    fn insertion_method_debug_format() {
+        let debug = format!("{:?}", InsertionMethod::Clipboard);
+        assert!(debug.contains("Clipboard"));
+        let debug = format!("{:?}", InsertionMethod::SimulateTyping);
+        assert!(debug.contains("SimulateTyping"));
+    }
+
+    #[test]
+    fn insertion_method_clone() {
+        let method = InsertionMethod::Clipboard;
+        let cloned = method;
+        assert_eq!(method, cloned);
+    }
+}
+
 fn simulate_paste() -> Result<()> {
     #[cfg(windows)]
     {
