@@ -1,30 +1,29 @@
 // Hide the console window on Windows release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod audio;
-mod config;
-mod context;
-mod hotkey;
-mod insertion;
-mod refinement;
-mod transcription;
-mod ui;
-
 use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tracing::{error, info, warn};
 
-use audio::{AudioCapture, RecordingBuffer};
-use config::AppConfig;
-use context::capture_context;
-use insertion::insert_text;
-use refinement::Refiner;
-use transcription::Transcriber;
-use ui::overlay::RecordingOverlay;
-use ui::tray::{SystemTray, TrayCommand};
+use duper_disper::audio::{self, AudioCapture, RecordingBuffer};
+use duper_disper::config::AppConfig;
+use duper_disper::context::capture_context;
+use duper_disper::insertion::insert_text;
+use duper_disper::refinement::Refiner;
+use duper_disper::transcription::{self, Transcriber};
+use duper_disper::hotkey;
+use duper_disper::ui::overlay::RecordingOverlay;
+use duper_disper::ui::settings;
+use duper_disper::ui::tray::{SystemTray, TrayCommand};
 
 fn main() -> Result<()> {
+    // If launched as settings subprocess, just run the settings UI and exit
+    if std::env::args().any(|a| a == "--settings") {
+        return duper_disper::ui::settings::run_settings_window()
+            .map_err(|e| anyhow::anyhow!("Settings window error: {}", e));
+    }
+
     // Initialize logging — write to file in release (no console), stderr in debug
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
@@ -115,7 +114,13 @@ fn main() -> Result<()> {
 
     let running = Arc::new(AtomicBool::new(true));
     let is_recording = Arc::new(AtomicBool::new(false));
-    let settings_open = Arc::new(AtomicBool::new(false));
+    let settings_child: Arc<Mutex<Option<std::process::Child>>> = Arc::new(Mutex::new(None));
+
+    // If launched with --show-settings, open settings window on startup
+    // (unlike --settings, the main app keeps running)
+    if std::env::args().any(|a| a == "--show-settings") {
+        settings::open_settings_window(&settings_child);
+    }
 
     let hotkey_rx = hotkey::start_listener(hotkey_config, running.clone())?;
 
@@ -152,13 +157,22 @@ fn main() -> Result<()> {
                     continue;
                 }
 
+                // Check if audio is essentially silence (Whisper hallucinates on silence)
+                let rms = audio::rms_energy(&samples);
+                if rms < 0.02 {
+                    info!("Audio is silence (RMS={:.6}), skipping transcription", rms);
+                    overlay.hide();
+                    continue;
+                }
+
                 // Resample to 16kHz for Whisper
                 let samples_16k =
                     audio::resample(&samples, audio.sample_rate(), 16000);
 
-                info!("Captured {} samples ({}s at source rate)",
+                info!("Captured {} samples ({}s at source rate, RMS={:.4})",
                     samples.len(),
-                    samples.len() as f32 / audio.sample_rate() as f32
+                    samples.len() as f32 / audio.sample_rate() as f32,
+                    rms
                 );
 
                 // Transcribe
@@ -166,6 +180,12 @@ fn main() -> Result<()> {
                     Ok(result) => {
                         if result.text.is_empty() {
                             warn!("Empty transcription, skipping");
+                            overlay.hide();
+                            continue;
+                        }
+
+                        if transcription::is_hallucination(&result.text) {
+                            warn!("Detected Whisper hallucination: {:?}, skipping", result.text);
                             overlay.hide();
                             continue;
                         }
@@ -214,7 +234,7 @@ fn main() -> Result<()> {
                 }
                 TrayCommand::Settings => {
                     info!("Settings requested");
-                    ui::settings::open_settings_window(settings_open.clone());
+                    settings::open_settings_window(&settings_child);
                 }
                 TrayCommand::ToggleRefinement => {
                     info!("Toggle refinement");
