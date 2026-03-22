@@ -88,7 +88,9 @@ fn main() -> Result<()> {
     // Initialize audio capture
     let audio = AudioCapture::new()?;
     let recording_buffer = RecordingBuffer::new();
-    let _capture_stream = audio.start_stream(recording_buffer.clone())?;
+    let capture_stream = audio.start_stream(recording_buffer.clone())?;
+    // Pause immediately — only keep the mic open while actively recording
+    capture_stream.pause();
 
     // Initialize refinement
     let refiner = if config.enable_refinement {
@@ -136,6 +138,7 @@ fn main() -> Result<()> {
             if pressed && !is_recording.load(Ordering::SeqCst) {
                 // Start recording
                 is_recording.store(true, Ordering::SeqCst);
+                capture_stream.play();
                 recording_buffer.start();
                 overlay.show_recording();
                 tray.set_recording(true);
@@ -144,6 +147,7 @@ fn main() -> Result<()> {
                 // Stop recording
                 is_recording.store(false, Ordering::SeqCst);
                 recording_buffer.stop();
+                capture_stream.pause();
                 tray.set_recording(false);
                 info!("Recording stopped");
 
