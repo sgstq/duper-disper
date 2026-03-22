@@ -101,7 +101,7 @@ fn main() -> Result<()> {
     };
 
     // Initialize overlay
-    let overlay = RecordingOverlay::new();
+    let mut overlay = RecordingOverlay::new(config.show_overlay);
 
     // Set up global hotkey via low-level keyboard hook
     let hotkey_config = hotkey::parse_hotkey(&config.hotkey)?;
@@ -246,6 +246,9 @@ fn main() -> Result<()> {
                 }
             }
         }
+
+        // Update overlay animation (pulsing during recording)
+        overlay.tick();
 
         // Pump Win32 messages (required for tray icon menu to work) and avoid spinning CPU
         pump_messages();
