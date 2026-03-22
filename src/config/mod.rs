@@ -47,6 +47,10 @@ pub struct AppConfig {
     /// Developer mode: enable debug tracing, show logs, and expose troubleshooting tools.
     #[serde(default)]
     pub developer_mode: bool,
+
+    /// Start application automatically on user login.
+    #[serde(default)]
+    pub auto_start: bool,
 }
 
 impl Default for AppConfig {
@@ -65,6 +69,7 @@ impl Default for AppConfig {
             sound_feedback: true,
             show_overlay: true,
             developer_mode: false,
+            auto_start: false,
         }
     }
 }
@@ -118,7 +123,50 @@ impl AppConfig {
         let path = Self::config_path()?;
         let content = toml::to_string_pretty(self)?;
         std::fs::write(&path, content)?;
+        self.apply_auto_start();
         Ok(())
+    }
+
+    /// Sync the Windows auto-start registry key with the config value.
+    #[cfg(windows)]
+    fn apply_auto_start(&self) {
+        use windows::core::HSTRING;
+        use windows::Win32::System::Registry::{
+            RegDeleteValueW, RegSetValueExW, RegOpenKeyExW, RegCloseKey,
+            HKEY_CURRENT_USER, KEY_SET_VALUE, REG_SZ,
+        };
+
+        let subkey = HSTRING::from(r"Software\Microsoft\Windows\CurrentVersion\Run");
+        let value_name = HSTRING::from("DuperDisper");
+
+        let mut hkey = windows::Win32::System::Registry::HKEY::default();
+        let result = unsafe {
+            RegOpenKeyExW(HKEY_CURRENT_USER, &subkey, 0, KEY_SET_VALUE, &mut hkey)
+        };
+        if result.is_err() {
+            return;
+        }
+
+        if self.auto_start {
+            if let Ok(exe) = std::env::current_exe() {
+                let exe_str = HSTRING::from(exe.to_string_lossy().as_ref());
+                let bytes = unsafe {
+                    std::slice::from_raw_parts(exe_str.as_ptr() as *const u8, (exe_str.len() + 1) * 2)
+                };
+                let _ = unsafe {
+                    RegSetValueExW(hkey, &value_name, 0, REG_SZ, Some(bytes))
+                };
+            }
+        } else {
+            let _ = unsafe { RegDeleteValueW(hkey, &value_name) };
+        }
+
+        unsafe { let _ = RegCloseKey(hkey); }
+    }
+
+    #[cfg(not(windows))]
+    fn apply_auto_start(&self) {
+        // No-op on non-Windows platforms
     }
 }
 

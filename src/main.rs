@@ -24,6 +24,9 @@ fn main() -> Result<()> {
             .map_err(|e| anyhow::anyhow!("Settings window error: {}", e));
     }
 
+    // Ensure only one instance of the main app runs at a time
+    let _instance_lock = acquire_single_instance_lock()?;
+
     // Load config early to check developer_mode for log level
     let config = AppConfig::load()?;
 
@@ -250,6 +253,28 @@ fn main() -> Result<()> {
     }
 
     info!("Duper Disper shutting down");
+    Ok(())
+}
+
+/// Acquire a system-wide named mutex to prevent multiple instances.
+/// Returns the mutex handle (must be kept alive for the process lifetime).
+#[cfg(windows)]
+fn acquire_single_instance_lock() -> Result<windows::Win32::Foundation::HANDLE> {
+    use windows::core::w;
+    use windows::Win32::Foundation::GetLastError;
+    use windows::Win32::System::Threading::CreateMutexW;
+
+    let handle = unsafe { CreateMutexW(None, true, w!("Global\\DuperDisper_SingleInstance"))? };
+
+    if unsafe { GetLastError() } == windows::Win32::Foundation::ERROR_ALREADY_EXISTS {
+        anyhow::bail!("Duper Disper is already running.");
+    }
+
+    Ok(handle)
+}
+
+#[cfg(not(windows))]
+fn acquire_single_instance_lock() -> Result<()> {
     Ok(())
 }
 

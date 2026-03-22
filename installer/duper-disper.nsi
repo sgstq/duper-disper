@@ -37,7 +37,7 @@ Var CreateDesktopShortcut
 
 ; --- Detect running instance and offer to terminate ---
 Function .onInit
-    StrCpy $CreateDesktopShortcut "1"
+    StrCpy $CreateDesktopShortcut "0"
 
     ; Check if duper-disper.exe is running
     FindWindow $0 "" "" 0
@@ -74,7 +74,7 @@ Function DesktopShortcutPage
 
     ${NSD_CreateCheckbox} 12u 30u 100% 12u "Create a desktop shortcut"
     Pop $DesktopShortcutCheckbox
-    ${NSD_SetState} $DesktopShortcutCheckbox ${BST_CHECKED}
+    ${NSD_SetState} $DesktopShortcutCheckbox ${BST_UNCHECKED}
 
     nsDialogs::Show
 FunctionEnd
@@ -106,8 +106,7 @@ Section "Install"
         CreateShortCut "$DESKTOP\Duper Disper.lnk" "$INSTDIR\duper-disper.exe" "" "$INSTDIR\icon.ico"
     ${EndIf}
 
-    ; Auto-start with Windows (optional, via registry)
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "DuperDisper" "$INSTDIR\duper-disper.exe"
+    ; Auto-start is managed by the app settings (auto_start option in config.toml)
 
     ; Write registry keys for uninstaller
     WriteRegStr HKLM "Software\DuperDisper" "InstallDir" "$INSTDIR"
