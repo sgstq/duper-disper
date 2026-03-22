@@ -164,7 +164,7 @@ fn main() -> Result<()> {
 
                 // Check if audio is essentially silence (Whisper hallucinates on silence)
                 let rms = audio::rms_energy(&samples);
-                if rms < 0.02 {
+                if rms < 0.005 {
                     info!("Audio is silence (RMS={:.6}), skipping transcription", rms);
                     overlay.hide();
                     continue;
