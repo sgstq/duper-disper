@@ -43,6 +43,10 @@ pub struct AppConfig {
 
     /// Show overlay notification during recording.
     pub show_overlay: bool,
+
+    /// Developer mode: enable debug tracing, show logs, and expose troubleshooting tools.
+    #[serde(default)]
+    pub developer_mode: bool,
 }
 
 impl Default for AppConfig {
@@ -60,6 +64,7 @@ impl Default for AppConfig {
             audio_device: String::new(),
             sound_feedback: true,
             show_overlay: true,
+            developer_mode: false,
         }
     }
 }
@@ -134,6 +139,7 @@ mod tests {
         assert!(config.audio_device.is_empty());
         assert!(config.sound_feedback);
         assert!(config.show_overlay);
+        assert!(!config.developer_mode);
     }
 
     #[test]
@@ -197,6 +203,7 @@ mod tests {
         assert_eq!(deserialized.capture_screenshots, config.capture_screenshots);
         assert_eq!(deserialized.sound_feedback, config.sound_feedback);
         assert_eq!(deserialized.show_overlay, config.show_overlay);
+        assert_eq!(deserialized.developer_mode, config.developer_mode);
     }
 
     #[test]
@@ -212,6 +219,7 @@ mod tests {
             audio_device = "Microphone (USB Audio)"
             sound_feedback = false
             show_overlay = false
+            developer_mode = true
 
             [cloud_stt]
             api_url = "https://api.openai.com/v1/audio/transcriptions"
@@ -238,6 +246,7 @@ mod tests {
         assert_eq!(config.audio_device, "Microphone (USB Audio)");
         assert!(!config.sound_feedback);
         assert!(!config.show_overlay);
+        assert!(config.developer_mode);
         assert_eq!(config.cloud_stt.api_key, "sk-test");
         assert_eq!(config.refinement.model, "gpt-4o-mini");
         assert!(config.refinement.use_screenshot);

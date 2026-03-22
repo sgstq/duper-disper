@@ -166,7 +166,20 @@ impl SettingsApp {
                 ui.label("Show overlay:");
                 ui.checkbox(&mut self.config.show_overlay, "");
                 ui.end_row();
+
+                ui.label("Developer mode:");
+                ui.checkbox(&mut self.config.developer_mode, "");
+                ui.end_row();
             });
+
+        if self.config.developer_mode {
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new("Debug tracing enabled. Logs written with TRACE level detail.")
+                    .small()
+                    .weak(),
+            );
+        }
     }
 
     fn render_transcription_tab(&mut self, ui: &mut egui::Ui) {

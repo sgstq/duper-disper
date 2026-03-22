@@ -24,9 +24,13 @@ fn main() -> Result<()> {
             .map_err(|e| anyhow::anyhow!("Settings window error: {}", e));
     }
 
-    // Initialize logging — write to file in release (no console), stderr in debug
+    // Load config early to check developer_mode for log level
+    let config = AppConfig::load()?;
+
+    // Initialize logging — use trace level in developer mode, info otherwise
+    let default_level = if config.developer_mode { "trace" } else { "info" };
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_level));
 
     if cfg!(not(debug_assertions)) {
         // Release: log to file since there's no console
@@ -55,10 +59,7 @@ fn main() -> Result<()> {
     }
 
     info!("Duper Disper v{} starting", env!("CARGO_PKG_VERSION"));
-
-    // Load config
-    let config = AppConfig::load()?;
-    info!("Config loaded: stt={:?}, hotkey={}", config.stt_backend, config.hotkey);
+    info!("Config loaded: stt={:?}, hotkey={}, developer_mode={}", config.stt_backend, config.hotkey, config.developer_mode);
 
     // Initialize transcriber based on configured backend
     let transcriber = match config.stt_backend {
