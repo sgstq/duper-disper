@@ -151,12 +151,16 @@ impl AppConfig {
         if self.auto_start {
             match std::env::current_exe() {
                 Ok(exe) => {
-                    // Quote the path so spaces in "Program Files" etc. are handled,
-                    // and build an explicit NUL-terminated UTF-16 buffer.
-                    let quoted = format!("\"{}\"", exe.to_string_lossy());
-                    let wide: Vec<u16> = quoted
-                        .encode_utf16()
-                        .chain(std::iter::once(0)) // NUL terminator
+                    // Quote the path so spaces in "Program Files" etc. are handled.
+                    // Use OsStr::encode_wide() to avoid lossy UTF-8 conversion that
+                    // could corrupt paths containing non-Unicode WTF-16 sequences.
+                    use std::os::windows::ffi::OsStrExt;
+                    let quote: u16 = b'"' as u16;
+                    let nul: u16 = 0;
+                    let wide: Vec<u16> = std::iter::once(quote)
+                        .chain(exe.as_os_str().encode_wide())
+                        .chain(std::iter::once(quote))
+                        .chain(std::iter::once(nul))
                         .collect();
                     let bytes: &[u8] = unsafe {
                         std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2)
@@ -206,6 +210,7 @@ mod tests {
         assert!(config.sound_feedback);
         assert!(config.show_overlay);
         assert!(!config.developer_mode);
+        assert!(!config.auto_start);
     }
 
     #[test]
@@ -270,6 +275,7 @@ mod tests {
         assert_eq!(deserialized.sound_feedback, config.sound_feedback);
         assert_eq!(deserialized.show_overlay, config.show_overlay);
         assert_eq!(deserialized.developer_mode, config.developer_mode);
+        assert_eq!(deserialized.auto_start, config.auto_start);
     }
 
     #[test]

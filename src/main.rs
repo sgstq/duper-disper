@@ -270,6 +270,19 @@ fn acquire_single_instance_lock() -> Result<windows::Win32::Foundation::HANDLE> 
     let handle = unsafe { CreateMutexW(None, true, w!("Local\\DuperDisper_SingleInstance"))? };
 
     if unsafe { GetLastError() } == windows::Win32::Foundation::ERROR_ALREADY_EXISTS {
+        // In release builds there's no console (windows_subsystem = "windows"),
+        // so show a message box so the user knows why the app didn't start.
+        if cfg!(not(debug_assertions)) {
+            use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK, MB_ICONINFORMATION};
+            unsafe {
+                MessageBoxW(
+                    None,
+                    w!("Duper Disper is already running."),
+                    w!("Duper Disper"),
+                    MB_OK | MB_ICONINFORMATION,
+                );
+            }
+        }
         anyhow::bail!("Duper Disper is already running.");
     }
 
