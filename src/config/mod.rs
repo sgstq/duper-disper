@@ -43,6 +43,14 @@ pub struct AppConfig {
 
     /// Show overlay notification during recording.
     pub show_overlay: bool,
+
+    /// Developer mode: enable debug tracing, show logs, and expose troubleshooting tools.
+    #[serde(default)]
+    pub developer_mode: bool,
+
+    /// Start application automatically on user login.
+    #[serde(default)]
+    pub auto_start: bool,
 }
 
 impl Default for AppConfig {
@@ -60,6 +68,8 @@ impl Default for AppConfig {
             audio_device: String::new(),
             sound_feedback: true,
             show_overlay: true,
+            developer_mode: false,
+            auto_start: false,
         }
     }
 }
@@ -113,7 +123,73 @@ impl AppConfig {
         let path = Self::config_path()?;
         let content = toml::to_string_pretty(self)?;
         std::fs::write(&path, content)?;
+        self.apply_auto_start();
         Ok(())
+    }
+
+    /// Sync the Windows auto-start registry key with the config value.
+    #[cfg(windows)]
+    fn apply_auto_start(&self) {
+        use windows::core::HSTRING;
+        use windows::Win32::System::Registry::{
+            RegDeleteValueW, RegSetValueExW, RegOpenKeyExW, RegCloseKey,
+            HKEY_CURRENT_USER, KEY_SET_VALUE, REG_SZ,
+        };
+
+        let subkey = HSTRING::from(r"Software\Microsoft\Windows\CurrentVersion\Run");
+        let value_name = HSTRING::from("DuperDisper");
+
+        let mut hkey = windows::Win32::System::Registry::HKEY::default();
+        let result = unsafe {
+            RegOpenKeyExW(HKEY_CURRENT_USER, &subkey, 0, KEY_SET_VALUE, &mut hkey)
+        };
+        if result.is_err() {
+            tracing::warn!("Failed to open auto-start registry key: {:?}", result);
+            return;
+        }
+
+        if self.auto_start {
+            match std::env::current_exe() {
+                Ok(exe) => {
+                    // Quote the path so spaces in "Program Files" etc. are handled.
+                    // Use OsStr::encode_wide() to avoid lossy UTF-8 conversion that
+                    // could corrupt paths containing non-Unicode WTF-16 sequences.
+                    use std::os::windows::ffi::OsStrExt;
+                    let quote: u16 = b'"' as u16;
+                    let nul: u16 = 0;
+                    let wide: Vec<u16> = std::iter::once(quote)
+                        .chain(exe.as_os_str().encode_wide())
+                        .chain(std::iter::once(quote))
+                        .chain(std::iter::once(nul))
+                        .collect();
+                    let bytes: &[u8] = unsafe {
+                        std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2)
+                    };
+                    let err = unsafe {
+                        RegSetValueExW(hkey, &value_name, 0, REG_SZ, Some(bytes))
+                    };
+                    if err.is_err() {
+                        tracing::warn!("Failed to set auto-start registry value: {:?}", err);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to determine exe path for auto-start: {}", e);
+                }
+            }
+        } else {
+            let err = unsafe { RegDeleteValueW(hkey, &value_name) };
+            // ERROR_FILE_NOT_FOUND is expected when the value was never set
+            if err.is_err() && err != windows::Win32::Foundation::ERROR_FILE_NOT_FOUND {
+                tracing::debug!("Failed to remove auto-start registry value: {:?}", err);
+            }
+        }
+
+        unsafe { let _ = RegCloseKey(hkey); }
+    }
+
+    #[cfg(not(windows))]
+    fn apply_auto_start(&self) {
+        // No-op on non-Windows platforms
     }
 }
 
@@ -134,6 +210,8 @@ mod tests {
         assert!(config.audio_device.is_empty());
         assert!(config.sound_feedback);
         assert!(config.show_overlay);
+        assert!(!config.developer_mode);
+        assert!(!config.auto_start);
     }
 
     #[test]
@@ -197,6 +275,8 @@ mod tests {
         assert_eq!(deserialized.capture_screenshots, config.capture_screenshots);
         assert_eq!(deserialized.sound_feedback, config.sound_feedback);
         assert_eq!(deserialized.show_overlay, config.show_overlay);
+        assert_eq!(deserialized.developer_mode, config.developer_mode);
+        assert_eq!(deserialized.auto_start, config.auto_start);
     }
 
     #[test]
@@ -212,6 +292,7 @@ mod tests {
             audio_device = "Microphone (USB Audio)"
             sound_feedback = false
             show_overlay = false
+            developer_mode = true
 
             [cloud_stt]
             api_url = "https://api.openai.com/v1/audio/transcriptions"
@@ -238,6 +319,7 @@ mod tests {
         assert_eq!(config.audio_device, "Microphone (USB Audio)");
         assert!(!config.sound_feedback);
         assert!(!config.show_overlay);
+        assert!(config.developer_mode);
         assert_eq!(config.cloud_stt.api_key, "sk-test");
         assert_eq!(config.refinement.model, "gpt-4o-mini");
         assert!(config.refinement.use_screenshot);

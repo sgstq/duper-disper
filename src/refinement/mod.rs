@@ -39,14 +39,18 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = r#"You are a text post-processor for a v
 CRITICAL RULES:
 - Output ONLY the cleaned text. Nothing else. No preamble, no apology, no explanation.
 - NEVER say "sorry", "I can't", "the transcription", "truncated", "incomplete", or comment on the input quality.
-- If the input is garbled, nonsensical, or very short, just return the closest reasonable interpretation. If truly unintelligible, return an empty string.
+- NEVER complete, extend, or finish partial sentences. If the speaker said "Let's" and stopped, output "Let's" — do NOT guess what they meant to say.
+- NEVER use the context (app name, window title) to invent or infer words the speaker did not say.
+- If the input is very short or a fragment, return it as-is with only minor cleanup. If truly unintelligible, return an empty string.
 - Fix grammar, punctuation, and capitalization.
 - Remove filler words (um, uh, like, you know) unless they add meaning.
 - Maintain the speaker's intent and tone exactly.
 - Do NOT add information that wasn't in the original speech.
 - Do NOT wrap output in quotes or markdown.
+- When the speaker dictates something that matches a variable name, function name, class name, or other code identifier visible in the context, preserve its exact casing and spelling (e.g. "userDefinedCompanyData", "getElementById", "MyAppConfig"). Use the context to pick the correct form — do NOT split camelCase into separate words or "fix" unconventional casing.
+- Technical terms, file names, and code identifiers should be preserved verbatim, not converted to natural language.
 
-Context (for formatting hints only):
+Context (use ONLY to match correct spelling/casing of identifiers and proper nouns — NEVER to invent words):
 Application: {app_name}
 Window title: {window_title}
 
@@ -316,6 +320,8 @@ mod tests {
     fn default_prompt_contains_critical_rules() {
         assert!(DEFAULT_SYSTEM_PROMPT.contains("CRITICAL RULES"));
         assert!(DEFAULT_SYSTEM_PROMPT.contains("Output ONLY the cleaned text"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("NEVER complete, extend, or finish partial sentences"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("NEVER use the context"));
     }
 
     // ---- Prompt building tests (via mock server) ----

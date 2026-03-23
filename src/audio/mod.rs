@@ -144,12 +144,32 @@ impl AudioCapture {
         stream.play()?;
         info!("Audio capture stream started");
 
-        Ok(CaptureStream { _stream: stream })
+        Ok(CaptureStream { stream })
     }
 }
 
 pub struct CaptureStream {
-    _stream: cpal::Stream,
+    stream: cpal::Stream,
+}
+
+impl CaptureStream {
+    /// Pause the audio capture stream, releasing the microphone.
+    pub fn pause(&self) {
+        if let Err(e) = self.stream.pause() {
+            error!("Failed to pause audio stream: {}", e);
+        } else {
+            info!("Audio capture stream paused");
+        }
+    }
+
+    /// Resume the audio capture stream, re-acquiring the microphone.
+    pub fn play(&self) {
+        if let Err(e) = self.stream.play() {
+            error!("Failed to resume audio stream: {}", e);
+        } else {
+            info!("Audio capture stream resumed");
+        }
+    }
 }
 
 /// Resample audio from `from_rate` to `to_rate` using linear interpolation.

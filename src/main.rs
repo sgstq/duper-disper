@@ -24,9 +24,16 @@ fn main() -> Result<()> {
             .map_err(|e| anyhow::anyhow!("Settings window error: {}", e));
     }
 
-    // Initialize logging — write to file in release (no console), stderr in debug
+    // Ensure only one instance of the main app runs at a time
+    let _instance_lock = acquire_single_instance_lock()?;
+
+    // Load config early to check developer_mode for log level
+    let config = AppConfig::load()?;
+
+    // Initialize logging — use trace level in developer mode, info otherwise
+    let default_level = if config.developer_mode { "trace" } else { "info" };
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_level));
 
     if cfg!(not(debug_assertions)) {
         // Release: log to file since there's no console
@@ -55,10 +62,7 @@ fn main() -> Result<()> {
     }
 
     info!("Duper Disper v{} starting", env!("CARGO_PKG_VERSION"));
-
-    // Load config
-    let config = AppConfig::load()?;
-    info!("Config loaded: stt={:?}, hotkey={}", config.stt_backend, config.hotkey);
+    info!("Config loaded: stt={:?}, hotkey={}, developer_mode={}", config.stt_backend, config.hotkey, config.developer_mode);
 
     // Initialize transcriber based on configured backend
     let transcriber = match config.stt_backend {
@@ -97,7 +101,7 @@ fn main() -> Result<()> {
     };
 
     // Initialize overlay
-    let overlay = RecordingOverlay::new();
+    let mut overlay = RecordingOverlay::new(config.show_overlay);
 
     // Set up global hotkey via low-level keyboard hook
     let hotkey_config = hotkey::parse_hotkey(&config.hotkey)?;
@@ -159,7 +163,7 @@ fn main() -> Result<()> {
 
                 // Check if audio is essentially silence (Whisper hallucinates on silence)
                 let rms = audio::rms_energy(&samples);
-                if rms < 0.02 {
+                if rms < 0.005 {
                     info!("Audio is silence (RMS={:.6}), skipping transcription", rms);
                     overlay.hide();
                     continue;
@@ -243,12 +247,50 @@ fn main() -> Result<()> {
             }
         }
 
+        // Update overlay animation (pulsing during recording)
+        overlay.tick();
+
         // Pump Win32 messages (required for tray icon menu to work) and avoid spinning CPU
         pump_messages();
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
     info!("Duper Disper shutting down");
+    Ok(())
+}
+
+/// Acquire a session-scoped named mutex to prevent multiple instances.
+/// Returns the mutex handle (must be kept alive for the process lifetime).
+#[cfg(windows)]
+fn acquire_single_instance_lock() -> Result<windows::Win32::Foundation::HANDLE> {
+    use windows::core::w;
+    use windows::Win32::Foundation::GetLastError;
+    use windows::Win32::System::Threading::CreateMutexW;
+
+    let handle = unsafe { CreateMutexW(None, true, w!("Local\\DuperDisper_SingleInstance"))? };
+
+    if unsafe { GetLastError() } == windows::Win32::Foundation::ERROR_ALREADY_EXISTS {
+        // In release builds there's no console (windows_subsystem = "windows"),
+        // so show a message box so the user knows why the app didn't start.
+        if cfg!(not(debug_assertions)) {
+            use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK, MB_ICONINFORMATION};
+            unsafe {
+                MessageBoxW(
+                    None,
+                    w!("Duper Disper is already running."),
+                    w!("Duper Disper"),
+                    MB_OK | MB_ICONINFORMATION,
+                );
+            }
+        }
+        anyhow::bail!("Duper Disper is already running.");
+    }
+
+    Ok(handle)
+}
+
+#[cfg(not(windows))]
+fn acquire_single_instance_lock() -> Result<()> {
     Ok(())
 }
 
