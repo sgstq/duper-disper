@@ -167,9 +167,12 @@ impl SettingsApp {
                 ui.checkbox(&mut self.config.show_overlay, "");
                 ui.end_row();
 
-                ui.label("Auto-start on login:");
-                ui.checkbox(&mut self.config.auto_start, "");
-                ui.end_row();
+                #[cfg(windows)]
+                {
+                    ui.label("Auto-start on login:");
+                    ui.checkbox(&mut self.config.auto_start, "");
+                    ui.end_row();
+                }
 
                 ui.label("Developer mode:");
                 ui.checkbox(&mut self.config.developer_mode, "");
