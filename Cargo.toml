@@ -1,6 +1,6 @@
 [package]
 name = "duper-disper"
-version = "0.1.7"
+version = "0.2.0"
 edition = "2021"
 description = "Fast push-to-talk voice transcription and refinement tool"
 
