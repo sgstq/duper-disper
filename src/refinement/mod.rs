@@ -40,7 +40,7 @@ CRITICAL RULES:
 - Output ONLY the cleaned text. Nothing else. No preamble, no apology, no explanation.
 - NEVER say "sorry", "I can't", "the transcription", "truncated", "incomplete", or comment on the input quality.
 - NEVER complete, extend, or finish partial sentences. If the speaker said "Let's" and stopped, output "Let's" — do NOT guess what they meant to say.
-- NEVER use the context (app name, window title) to invent or infer words the speaker did not say.
+- NEVER use the context (app name, window title, surrounding text) to invent or infer words the speaker did not say.
 - If the input is very short or a fragment, return it as-is with only minor cleanup. If truly unintelligible, return an empty string.
 - Fix grammar, punctuation, and capitalization.
 - Remove filler words (um, uh, like, you know) unless they add meaning.
@@ -53,7 +53,8 @@ CRITICAL RULES:
 Context (use ONLY to match correct spelling/casing of identifiers and proper nouns — NEVER to invent words):
 Application: {app_name}
 Window title: {window_title}
-
+{surrounding_text_section}
+{app_context_hint}
 Raw transcript:
 {transcript}"#;
 
@@ -97,6 +98,25 @@ impl Refiner {
         Self { config, client }
     }
 
+    /// Build the final prompt text with all placeholders substituted.
+    fn build_prompt(
+        &self,
+        transcript: &str,
+        context: &CapturedContext,
+        surrounding_text_section: &str,
+        app_context_hint: &str,
+    ) -> String {
+        self.config
+            .system_prompt
+            .replace("{app_name}", &context.app_name)
+            .replace("{window_title}", &context.window_title)
+            // Legacy placeholder — kept for backwards compatibility with custom prompts
+            .replace("{surrounding_text}", &context.surrounding_text)
+            .replace("{surrounding_text_section}", surrounding_text_section)
+            .replace("{app_context_hint}", app_context_hint)
+            .replace("{transcript}", transcript)
+    }
+
     /// Refine a raw transcript using the configured LLM.
     pub async fn refine(
         &self,
@@ -105,32 +125,33 @@ impl Refiner {
     ) -> Result<String> {
         info!("Refining transcript ({} chars) with context", transcript.len());
 
-        let system_prompt = self
-            .config
-            .system_prompt
-            .replace("{app_name}", &context.app_name)
-            .replace("{window_title}", &context.window_title)
-            .replace("{surrounding_text}", &context.surrounding_text)
-            .replace("{transcript}", transcript);
+        let app_context_hint = context.app_context_hint();
+        debug!("App category: {:?}, hint: {}", context.app_category(), if app_context_hint.is_empty() { "(none)" } else { "(present)" });
+
+        // Build surrounding text section — only include if we have text
+        let surrounding_text_section = if context.surrounding_text.is_empty() {
+            String::new()
+        } else {
+            format!("Surrounding text (visible near cursor):\n{}\n", context.surrounding_text)
+        };
+
+        let prompt_text = self.build_prompt(transcript, context, &surrounding_text_section, app_context_hint);
 
         let mut messages = vec![ChatMessage {
             role: "user".to_string(),
-            content: serde_json::Value::String(system_prompt),
+            content: serde_json::Value::String(prompt_text),
         }];
 
         // If we have a screenshot and config says to use it, add as vision content
         if self.config.use_screenshot {
             if let Some(ref screenshot_b64) = context.screenshot_base64 {
+                let prompt_text = self.build_prompt(transcript, context, &surrounding_text_section, app_context_hint);
                 messages = vec![ChatMessage {
                     role: "user".to_string(),
                     content: serde_json::json!([
                         {
                             "type": "text",
-                            "text": self.config.system_prompt
-                                .replace("{app_name}", &context.app_name)
-                                .replace("{window_title}", &context.window_title)
-                                .replace("{surrounding_text}", &context.surrounding_text)
-                                .replace("{transcript}", transcript)
+                            "text": prompt_text
                         },
                         {
                             "type": "image_url",
@@ -314,6 +335,8 @@ mod tests {
         assert!(DEFAULT_SYSTEM_PROMPT.contains("{app_name}"));
         assert!(DEFAULT_SYSTEM_PROMPT.contains("{window_title}"));
         assert!(DEFAULT_SYSTEM_PROMPT.contains("{transcript}"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("{surrounding_text_section}"));
+        assert!(DEFAULT_SYSTEM_PROMPT.contains("{app_context_hint}"));
     }
 
     #[test]
@@ -634,6 +657,154 @@ mod tests {
         assert_eq!(body["model"], "gpt-4o-mini");
         assert_eq!(body["temperature"], 0.3);
         assert_eq!(body["max_tokens"], 1024);
+    }
+
+    #[tokio::test]
+    async fn refine_includes_app_context_hint_for_code_editor() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": { "content": "refined" }
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let config = RefinementConfig {
+            api_url: format!("{}/v1/chat/completions", server.uri()),
+            ..Default::default()
+        };
+        let refiner = Refiner::new(config);
+        let ctx = make_context("Code.exe", "main.rs - VS Code", "", None);
+
+        refiner.refine("get user data", &ctx).await.unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let content = body["messages"][0]["content"].as_str().unwrap();
+        assert!(content.contains("CODE EDITOR"), "Prompt should contain code editor context hint");
+        assert!(content.contains("camelCase"), "Prompt should mention casing conventions");
+    }
+
+    #[tokio::test]
+    async fn refine_includes_app_context_hint_for_terminal() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": { "content": "refined" }
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let config = RefinementConfig {
+            api_url: format!("{}/v1/chat/completions", server.uri()),
+            ..Default::default()
+        };
+        let refiner = Refiner::new(config);
+        let ctx = make_context("WindowsTerminal.exe", "PowerShell", "", None);
+
+        refiner.refine("git status", &ctx).await.unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let content = body["messages"][0]["content"].as_str().unwrap();
+        assert!(content.contains("TERMINAL"), "Prompt should contain terminal context hint");
+    }
+
+    #[tokio::test]
+    async fn refine_omits_hint_for_unknown_app() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": { "content": "refined" }
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let config = RefinementConfig {
+            api_url: format!("{}/v1/chat/completions", server.uri()),
+            ..Default::default()
+        };
+        let refiner = Refiner::new(config);
+        let ctx = make_context("calc.exe", "Calculator", "", None);
+
+        refiner.refine("hello", &ctx).await.unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let content = body["messages"][0]["content"].as_str().unwrap();
+        assert!(!content.contains("CODE EDITOR"), "Should not contain code editor hint for calc");
+        assert!(!content.contains("TERMINAL"), "Should not contain terminal hint for calc");
+    }
+
+    #[tokio::test]
+    async fn refine_includes_surrounding_text_section_when_present() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": { "content": "refined" }
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let config = RefinementConfig {
+            api_url: format!("{}/v1/chat/completions", server.uri()),
+            ..Default::default()
+        };
+        let refiner = Refiner::new(config);
+        let ctx = make_context("Code.exe", "main.rs - VS Code", "fn userDefinedCompanyData() {", None);
+
+        refiner.refine("user defined company data", &ctx).await.unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let content = body["messages"][0]["content"].as_str().unwrap();
+        assert!(content.contains("fn userDefinedCompanyData()"), "Prompt should contain surrounding text");
+        assert!(content.contains("visible near cursor"), "Prompt should label surrounding text section");
+    }
+
+    #[tokio::test]
+    async fn refine_omits_surrounding_text_section_when_empty() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": { "content": "refined" }
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let config = RefinementConfig {
+            api_url: format!("{}/v1/chat/completions", server.uri()),
+            ..Default::default()
+        };
+        let refiner = Refiner::new(config);
+        let ctx = make_context("Code.exe", "main.rs - VS Code", "", None);
+
+        refiner.refine("hello world", &ctx).await.unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let content = body["messages"][0]["content"].as_str().unwrap();
+        assert!(!content.contains("visible near cursor"), "Should not contain surrounding text label when empty");
     }
 
     #[tokio::test]
