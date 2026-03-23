@@ -178,7 +178,8 @@ impl AppConfig {
             }
         } else {
             let err = unsafe { RegDeleteValueW(hkey, &value_name) };
-            if err.is_err() {
+            // ERROR_FILE_NOT_FOUND is expected when the value was never set
+            if err.is_err() && err != windows::Win32::Foundation::ERROR_FILE_NOT_FOUND {
                 tracing::debug!("Failed to remove auto-start registry value: {:?}", err);
             }
         }

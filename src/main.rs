@@ -259,7 +259,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Acquire a system-wide named mutex to prevent multiple instances.
+/// Acquire a session-scoped named mutex to prevent multiple instances.
 /// Returns the mutex handle (must be kept alive for the process lifetime).
 #[cfg(windows)]
 fn acquire_single_instance_lock() -> Result<windows::Win32::Foundation::HANDLE> {
