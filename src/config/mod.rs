@@ -161,10 +161,11 @@ impl AppConfig {
                     let bytes: &[u8] = unsafe {
                         std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2)
                     };
-                    if let Err(e) = unsafe {
+                    let err = unsafe {
                         RegSetValueExW(hkey, &value_name, 0, REG_SZ, Some(bytes))
-                    } {
-                        tracing::warn!("Failed to set auto-start registry value: {}", e);
+                    };
+                    if err.is_err() {
+                        tracing::warn!("Failed to set auto-start registry value: {:?}", err);
                     }
                 }
                 Err(e) => {
@@ -172,8 +173,9 @@ impl AppConfig {
                 }
             }
         } else {
-            if let Err(e) = unsafe { RegDeleteValueW(hkey, &value_name) } {
-                tracing::debug!("Failed to remove auto-start registry value: {}", e);
+            let err = unsafe { RegDeleteValueW(hkey, &value_name) };
+            if err.is_err() {
+                tracing::debug!("Failed to remove auto-start registry value: {:?}", err);
             }
         }
 
