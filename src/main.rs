@@ -267,7 +267,7 @@ fn acquire_single_instance_lock() -> Result<windows::Win32::Foundation::HANDLE> 
     use windows::Win32::Foundation::GetLastError;
     use windows::Win32::System::Threading::CreateMutexW;
 
-    let handle = unsafe { CreateMutexW(None, true, w!("Global\\DuperDisper_SingleInstance"))? };
+    let handle = unsafe { CreateMutexW(None, true, w!("Local\\DuperDisper_SingleInstance"))? };
 
     if unsafe { GetLastError() } == windows::Win32::Foundation::ERROR_ALREADY_EXISTS {
         anyhow::bail!("Duper Disper is already running.");

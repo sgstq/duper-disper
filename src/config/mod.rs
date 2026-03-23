@@ -144,27 +144,37 @@ impl AppConfig {
             RegOpenKeyExW(HKEY_CURRENT_USER, &subkey, 0, KEY_SET_VALUE, &mut hkey)
         };
         if result.is_err() {
+            tracing::warn!("Failed to open auto-start registry key: {:?}", result);
             return;
         }
 
         if self.auto_start {
-            if let Ok(exe) = std::env::current_exe() {
-                // Quote the path so spaces in "Program Files" etc. are handled,
-                // and build an explicit NUL-terminated UTF-16 buffer.
-                let quoted = format!("\"{}\"", exe.to_string_lossy());
-                let wide: Vec<u16> = quoted
-                    .encode_utf16()
-                    .chain(std::iter::once(0)) // NUL terminator
-                    .collect();
-                let bytes: &[u8] = unsafe {
-                    std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2)
-                };
-                let _ = unsafe {
-                    RegSetValueExW(hkey, &value_name, 0, REG_SZ, Some(bytes))
-                };
+            match std::env::current_exe() {
+                Ok(exe) => {
+                    // Quote the path so spaces in "Program Files" etc. are handled,
+                    // and build an explicit NUL-terminated UTF-16 buffer.
+                    let quoted = format!("\"{}\"", exe.to_string_lossy());
+                    let wide: Vec<u16> = quoted
+                        .encode_utf16()
+                        .chain(std::iter::once(0)) // NUL terminator
+                        .collect();
+                    let bytes: &[u8] = unsafe {
+                        std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2)
+                    };
+                    if let Err(e) = unsafe {
+                        RegSetValueExW(hkey, &value_name, 0, REG_SZ, Some(bytes))
+                    } {
+                        tracing::warn!("Failed to set auto-start registry value: {}", e);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to determine exe path for auto-start: {}", e);
+                }
             }
         } else {
-            let _ = unsafe { RegDeleteValueW(hkey, &value_name) };
+            if let Err(e) = unsafe { RegDeleteValueW(hkey, &value_name) } {
+                tracing::debug!("Failed to remove auto-start registry value: {}", e);
+            }
         }
 
         unsafe { let _ = RegCloseKey(hkey); }
