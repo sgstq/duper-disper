@@ -56,7 +56,7 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            hotkey: "CapsLock".to_string(),
+            hotkey: default_hotkey().to_string(),
             stt_backend: SttBackend::Local,
             whisper_model: "base.en".to_string(),
             language: "en".to_string(),
@@ -71,6 +71,18 @@ impl Default for AppConfig {
             developer_mode: false,
             auto_start: false,
         }
+    }
+}
+
+pub fn default_hotkey() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "F6"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "CapsLock"
     }
 }
 
@@ -200,7 +212,7 @@ mod tests {
     #[test]
     fn default_config_has_expected_values() {
         let config = AppConfig::default();
-        assert_eq!(config.hotkey, "CapsLock");
+        assert_eq!(config.hotkey, default_hotkey());
         assert_eq!(config.stt_backend, SttBackend::Local);
         assert_eq!(config.whisper_model, "base.en");
         assert_eq!(config.language, "en");

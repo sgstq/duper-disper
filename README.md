@@ -51,18 +51,20 @@ cargo build --release
 ```
 
 On Windows, no additional system dependencies are needed.
+On macOS, you will typically need to grant Accessibility permissions so the app can monitor the hotkey and simulate paste/typing.
 On Linux (for development), install: `libgtk-3-dev libasound2-dev libxdo-dev cmake clang`
 
 ## Configuration
 
 On first run, a default config is created at:
 - Windows: `%APPDATA%\duper-disper\config.toml`
+- macOS: `~/Library/Application Support/duper-disper/config.toml`
 - Linux: `~/.config/duper-disper/config.toml`
 
 Key settings:
 
 ```toml
-hotkey = "CapsLock"              # Push-to-talk key
+hotkey = "CapsLock"              # Push-to-talk key (macOS default is F6)
 whisper_model = "base.en"        # Whisper model (auto-downloaded)
 language = "en"                  # Language code or "auto"
 insertion_method = "clipboard"   # "clipboard" or "typing"
@@ -85,7 +87,7 @@ Models are automatically downloaded on first use. Available models:
 ## Roadmap
 
 - [x] Settings GUI window
-- [ ] macOS support
+- [x] macOS support
 - [ ] UI Automation for better surrounding text capture
 - [ ] Voice activity detection (auto-stop)
 - [ ] Multiple recording modes (push-to-talk, toggle, voice-activated)

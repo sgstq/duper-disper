@@ -11,14 +11,45 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    permissions:
-      contents: write
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+      skip_release: ${{ steps.check.outputs.SKIP }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check if release needed
+        id: check
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        shell: bash
+        run: |
+          VERSION="v${{ steps.version.outputs.VERSION }}"
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "SKIP=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $VERSION already exists, skipping release"
+          else
+            echo "SKIP=false" >> "$GITHUB_OUTPUT"
+            echo "Will create release $VERSION"
+          fi
+
+  build-windows:
+    runs-on: windows-latest
+    needs: prepare
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -39,39 +70,18 @@ jobs:
       - name: Install NSIS
         run: choco install nsis -y
 
-      - name: Get version
-        id: version
-        shell: pwsh
-        run: |
-          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
-          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
-
-      - name: Check if release needed
-        id: check
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        shell: bash
-        run: |
-          VERSION="v${{ steps.version.outputs.VERSION }}"
-          if git rev-parse "$VERSION" >/dev/null 2>&1; then
-            echo "SKIP=true" >> "$GITHUB_OUTPUT"
-            echo "Tag $VERSION already exists, skipping release"
-          else
-            echo "SKIP=false" >> "$GITHUB_OUTPUT"
-            echo "Will create release $VERSION"
-          fi
-
       - name: Build installer
         shell: pwsh
         run: |
           Copy-Item "target\release\duper-disper.exe" "installer\duper-disper.exe" -Force
-          & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=${{ steps.version.outputs.VERSION }} installer\duper-disper.nsi
-          mkdir -p installer\output
-          Move-Item "installer\duper-disper-setup.exe" "installer\output\duper-disper-${{ steps.version.outputs.VERSION }}-setup.exe"
+          & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=${{ needs.prepare.outputs.version }} installer\duper-disper.nsi
+          New-Item -ItemType Directory -Force -Path "installer\output" | Out-Null
+          Move-Item "installer\duper-disper-setup.exe" "installer\output\duper-disper-${{ needs.prepare.outputs.version }}-setup.exe" -Force
 
       - name: Create portable ZIP
         shell: pwsh
         run: |
-          Compress-Archive -Path "target\release\duper-disper.exe" -DestinationPath "installer\output\duper-disper-${{ steps.version.outputs.VERSION }}-portable.zip"
+          Compress-Archive -Path "target\release\duper-disper.exe" -DestinationPath "installer\output\duper-disper-${{ needs.prepare.outputs.version }}-portable.zip"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -79,15 +89,74 @@ jobs:
           name: duper-disper-windows
           path: installer/output/*
 
-      # Auto-tag and release when merged to main, if version is new
+  build-macos:
+    runs-on: macos-latest
+    needs: prepare
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macos-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: macos-cargo-
+
+      - name: Install native build tools
+        run: brew install cmake
+
+      - name: Install bundler
+        run: cargo install cargo-bundle --locked
+
+      - name: Build macOS app bundle
+        run: cargo bundle --release
+
+      - name: Package app bundle
+        shell: bash
+        run: |
+          mkdir -p installer/output
+          ditto -c -k --sequesterRsrc --keepParent \
+            "target/release/bundle/osx/Duper Disper.app" \
+            "installer/output/duper-disper-${{ needs.prepare.outputs.version }}-macos-app.zip"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: duper-disper-macos
+          path: installer/output/*
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [prepare, build-windows, build-macos]
+    if: |
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
+      needs.prepare.outputs.skip_release == 'false'
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: duper-disper-windows
+          path: release-artifacts
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: duper-disper-macos
+          path: release-artifacts
+
       - name: Create GitHub Release
-        if: |
-          (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
-          steps.check.outputs.SKIP == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.VERSION }}
-          files: installer/output/*
+          tag_name: v${{ needs.prepare.outputs.version }}
+          files: release-artifacts/*
           generate_release_notes: true
           draft: false
         env:

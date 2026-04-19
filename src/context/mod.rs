@@ -1,3 +1,4 @@
+#[cfg(windows)]
 use anyhow::Result;
 #[cfg(windows)]
 use tracing::debug;
