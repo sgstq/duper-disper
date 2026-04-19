@@ -31,6 +31,8 @@ tray-icon = { version = "0.19", optional = true }
 
 # Cross-platform clipboard
 arboard = "3"
+enigo = "0.2"
+rdev = "0.5"
 
 # UI toolkit for overlay / settings (optional, needs GTK/Pango)
 eframe = { version = "0.30", optional = true }
@@ -64,7 +66,6 @@ windows = { version = "0.58", features = [
     "Win32_System_Registry",
     "Win32_Security",
 ] }
-enigo = "0.2"
 screenshots = "0.8"
 
 [dev-dependencies]
@@ -77,3 +78,11 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+
+[package.metadata.bundle]
+name = "Duper Disper"
+identifier = "com.sgstq.duper-disper"
+short_description = "Fast push-to-talk voice transcription and refinement tool"
+long_description = "A native desktop app for push-to-talk voice transcription, refinement, and text insertion."
+icon = ["assets/icon.png"]
+category = "Productivity"

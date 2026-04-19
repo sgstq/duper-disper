@@ -2,6 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use anyhow::Result;
+#[cfg(unix)]
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{error, info, warn};
@@ -120,6 +122,11 @@ fn main() -> Result<()> {
     let is_recording = Arc::new(AtomicBool::new(false));
     let settings_child: Arc<Mutex<Option<std::process::Child>>> = Arc::new(Mutex::new(None));
 
+    start_single_instance_ipc(&_instance_lock, settings_child.clone());
+
+    #[cfg(target_os = "macos")]
+    settings::open_settings_window(&settings_child);
+
     // If launched with --show-settings, open settings window on startup
     // (unlike --settings, the main app keeps running)
     if std::env::args().any(|a| a == "--show-settings") {
@@ -236,8 +243,8 @@ fn main() -> Result<()> {
                     info!("Quit requested");
                     running.store(false, Ordering::SeqCst);
                 }
-                TrayCommand::Settings => {
-                    info!("Settings requested");
+                TrayCommand::OpenWindow => {
+                    info!("Open window requested");
                     settings::open_settings_window(&settings_child);
                 }
                 TrayCommand::ToggleRefinement => {
@@ -290,8 +297,90 @@ fn acquire_single_instance_lock() -> Result<windows::Win32::Foundation::HANDLE> 
 }
 
 #[cfg(not(windows))]
-fn acquire_single_instance_lock() -> Result<()> {
-    Ok(())
+struct SingleInstanceGuard {
+    #[cfg(unix)]
+    socket_path: std::path::PathBuf,
+}
+
+#[cfg(not(windows))]
+fn acquire_single_instance_lock() -> Result<SingleInstanceGuard> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::net::UnixStream;
+
+        let socket_path = single_instance_socket_path()?;
+
+        if let Ok(mut stream) = UnixStream::connect(&socket_path) {
+            let _ = stream.write_all(b"show-settings\n");
+            anyhow::bail!("Duper Disper is already running.");
+        }
+
+        if socket_path.exists() {
+            let _ = std::fs::remove_file(&socket_path);
+        }
+
+        Ok(SingleInstanceGuard { socket_path })
+    }
+
+    #[cfg(not(unix))]
+    {
+        Ok(SingleInstanceGuard {})
+    }
+}
+
+#[cfg(unix)]
+fn single_instance_socket_path() -> Result<std::path::PathBuf> {
+    Ok(AppConfig::config_dir()?.join("instance.sock"))
+}
+
+#[cfg(windows)]
+fn start_single_instance_ipc(
+    _instance_lock: &windows::Win32::Foundation::HANDLE,
+    _settings_child: Arc<Mutex<Option<std::process::Child>>>,
+) {
+}
+
+#[cfg(unix)]
+fn start_single_instance_ipc(
+    instance_lock: &SingleInstanceGuard,
+    settings_child: Arc<Mutex<Option<std::process::Child>>>,
+) {
+    use std::os::unix::net::UnixListener;
+
+    let socket_path = instance_lock.socket_path.clone();
+    let _ = std::fs::remove_file(&socket_path);
+
+    let listener = match UnixListener::bind(&socket_path) {
+        Ok(listener) => listener,
+        Err(e) => {
+            error!("Failed to bind single-instance socket: {}", e);
+            return;
+        }
+    };
+
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            match stream {
+                Ok(mut stream) => {
+                    let mut buf = String::new();
+                    if stream.read_to_string(&mut buf).is_ok() && buf.contains("show-settings") {
+                        settings::open_settings_window(&settings_child);
+                    }
+                }
+                Err(e) => {
+                    error!("Single-instance socket error: {}", e);
+                    break;
+                }
+            }
+        }
+    });
+}
+
+#[cfg(all(not(windows), not(unix)))]
+fn start_single_instance_ipc(
+    _instance_lock: &SingleInstanceGuard,
+    _settings_child: Arc<Mutex<Option<std::process::Child>>>,
+) {
 }
 
 /// Process pending Win32 messages. Required for the system tray context menu
@@ -314,4 +403,3 @@ fn pump_messages() {
 fn pump_messages() {
     // No-op on non-Windows platforms
 }
-

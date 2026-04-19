@@ -16,15 +16,6 @@ enum OverlayState {
 }
 
 impl OverlayState {
-    fn from_u8(v: u8) -> Self {
-        match v {
-            1 => Self::Recording,
-            2 => Self::Transcribing,
-            3 => Self::Refining,
-            _ => Self::Hidden,
-        }
-    }
-
     fn label(self) -> &'static str {
         match self {
             Self::Recording => "Recording...",

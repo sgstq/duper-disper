@@ -4,7 +4,7 @@ use tracing::{debug, info};
 /// Strategy for inserting text into the active application.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InsertionMethod {
-    /// Paste via clipboard (Ctrl+V). Works everywhere but modifies clipboard.
+    /// Paste via clipboard. Works across supported platforms but modifies clipboard.
     Clipboard,
     /// Type characters one by one. Slower but doesn't touch clipboard.
     SimulateTyping,
@@ -30,7 +30,7 @@ fn insert_via_clipboard(text: &str) -> Result<()> {
     // Set our text
     clipboard.set_text(text)?;
 
-    // Simulate Ctrl+V
+    // Simulate the platform paste shortcut.
     simulate_paste()?;
 
     // Wait a bit for the paste to complete
@@ -46,7 +46,7 @@ fn insert_via_clipboard(text: &str) -> Result<()> {
 }
 
 fn insert_via_typing(text: &str) -> Result<()> {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     {
         use enigo::{Enigo, Keyboard, Settings};
         let mut enigo = Enigo::new(&Settings::default())?;
@@ -54,7 +54,7 @@ fn insert_via_typing(text: &str) -> Result<()> {
         debug!("Simulated typing complete");
     }
 
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         // Fallback: just use clipboard method
         insert_via_clipboard(text)?;
@@ -91,21 +91,26 @@ mod tests {
 }
 
 fn simulate_paste() -> Result<()> {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     {
         use enigo::{Direction, Enigo, Key, Keyboard, Settings};
         let mut enigo = Enigo::new(&Settings::default())?;
-        enigo.key(Key::Control, Direction::Press)?;
+        #[cfg(windows)]
+        let modifier = Key::Control;
+        #[cfg(target_os = "macos")]
+        let modifier = Key::Meta;
+
+        enigo.key(modifier, Direction::Press)?;
         enigo.key(Key::Unicode('v'), Direction::Click)?;
-        enigo.key(Key::Control, Direction::Release)?;
+        enigo.key(modifier, Direction::Release)?;
     }
 
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
-        // On non-Windows, we'd use different key combos or xdotool
+        // Linux support still needs a platform-specific paste implementation.
         return Err(anyhow::anyhow!("Paste simulation not implemented for this platform"));
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     Ok(())
 }

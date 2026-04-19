@@ -3,7 +3,7 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 use tracing::info;
 
 pub enum TrayCommand {
-    Settings,
+    OpenWindow,
     ToggleRefinement,
     Quit,
 }
@@ -19,7 +19,7 @@ impl SystemTray {
     pub fn new() -> anyhow::Result<Self> {
         let menu = Menu::new();
 
-        let settings_item = MenuItem::new("Settings...", true, None);
+        let settings_item = MenuItem::new("Open Window", true, None);
         let toggle_item = MenuItem::new("Disable Refinement", true, None);
         let quit_item = MenuItem::new("Quit", true, None);
 
@@ -53,7 +53,7 @@ impl SystemTray {
                 return Some(TrayCommand::Quit);
             }
             if event.id == self.settings_id.id() {
-                return Some(TrayCommand::Settings);
+                return Some(TrayCommand::OpenWindow);
             }
             if event.id == self.toggle_refinement_id.id() {
                 return Some(TrayCommand::ToggleRefinement);
