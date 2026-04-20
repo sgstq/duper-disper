@@ -8,6 +8,17 @@ Download the latest release from the [Releases page](https://github.com/sgstq/du
 
 - **Installer** — `duper-disper-x.x.x-setup.exe` — guided setup with Start Menu shortcut and uninstaller
 - **Portable** — `duper-disper-x.x.x-portable.zip` — standalone executable, no installation needed
+- **macOS** — `duper-disper-x.x.x-macos-app.zip` — unzip and drag `Duper Disper.app` to `/Applications`
+
+### macOS: "Duper Disper is damaged and can't be opened"
+
+The macOS build is not yet signed or notarized, so Gatekeeper flags it as damaged when downloaded via a browser. To allow it to run, remove the quarantine attribute after unzipping:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Duper Disper.app"
+```
+
+Then open the app normally. (Signed + notarized builds are on the roadmap.)
 
 ### Warning
 <p align="center">
