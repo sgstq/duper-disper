@@ -6,8 +6,19 @@ A fast, native push-to-talk voice transcription tool built in Rust. Inspired by 
 
 Download the latest release from the [Releases page](https://github.com/sgstq/duper-disper/releases/latest):
 
+**Windows**
 - **Installer** — `duper-disper-x.x.x-setup.exe` — guided setup with Start Menu shortcut and uninstaller
 - **Portable** — `duper-disper-x.x.x-portable.zip` — standalone executable, no installation needed
+
+**macOS**
+- **App bundle** — `duper-disper-x.x.x-macos-app.zip` — unzip and drag `Duper Disper.app` to `/Applications`
+
+On macOS the app runs as a menu-bar (status-bar) app with no Dock icon. On first
+launch it will prompt for **Accessibility** permission (needed to detect the
+global hotkey and paste/type text) and **Microphone** permission (needed to
+record). Grant both in **System Settings → Privacy & Security**, then relaunch
+the app if the hotkey doesn't respond. The build is unsigned, so the first time
+you open it use **right-click → Open** to bypass Gatekeeper.
 
 ### Warning
 <p align="center">
@@ -22,7 +33,7 @@ Download the latest release from the [Releases page](https://github.com/sgstq/du
 - **Local-first** — Runs Whisper.cpp locally for transcription, no cloud required
 - **LLM refinement** — Optionally refines raw transcripts using an LLM (local via Ollama/LM Studio, or cloud APIs)
 - **Context-aware** — Captures active application name, window title, surrounding text, and optionally a screenshot to improve refinement quality
-- **System tray** — Runs quietly in the system tray with a minimal recording overlay
+- **System tray / menu bar** — Runs quietly in the tray (Windows) or menu bar (macOS); the icon turns red while recording, plus an optional sound cue and (on Windows) a floating overlay
 
 ## Architecture
 

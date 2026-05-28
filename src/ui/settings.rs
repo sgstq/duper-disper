@@ -56,6 +56,7 @@ pub fn run_settings_window() -> Result<(), eframe::Error> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([520.0, 580.0])
             .with_min_inner_size([420.0, 400.0])
+            .with_active(true)
             .with_title("Duper Disper"),
         #[cfg(target_os = "windows")]
         event_loop_builder: Some(Box::new(|builder| {
@@ -72,6 +73,28 @@ pub fn run_settings_window() -> Result<(), eframe::Error> {
             Ok(Box::new(app))
         }),
     )
+}
+
+/// Reveal a file in the platform's file manager (Explorer/Finder/file browser).
+fn reveal_in_file_manager(path: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg("-R").arg(path).spawn();
+
+    #[cfg(windows)]
+    let result = std::process::Command::new("explorer")
+        .arg(format!("/select,{}", path.display()))
+        .spawn();
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = {
+        // xdg-open can't select a file, so open the containing directory.
+        let target = path.parent().unwrap_or(path);
+        std::process::Command::new("xdg-open").arg(target).spawn()
+    };
+
+    if let Err(e) = result {
+        error!("Failed to reveal config file: {}", e);
+    }
 }
 
 fn configure_style(ctx: &egui::Context) {
@@ -236,10 +259,7 @@ impl SettingsApp {
 
                 if let Ok(config_path) = AppConfig::config_path() {
                     if ui.button("Show Config File").clicked() {
-                        let _ = std::process::Command::new("open")
-                            .arg("-R")
-                            .arg(config_path)
-                            .spawn();
+                        reveal_in_file_manager(&config_path);
                     }
                 }
             });
@@ -337,7 +357,7 @@ impl SettingsApp {
                 ui.checkbox(&mut self.config.show_overlay, "");
                 ui.end_row();
 
-                #[cfg(windows)]
+                #[cfg(any(windows, target_os = "macos"))]
                 {
                     ui.label("Auto-start on login:");
                     ui.checkbox(&mut self.config.auto_start, "");

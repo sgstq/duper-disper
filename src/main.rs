@@ -29,6 +29,11 @@ fn main() -> Result<()> {
     // Ensure only one instance of the main app runs at a time
     let _instance_lock = acquire_single_instance_lock()?;
 
+    // Detect first run (no config file yet) before load() creates the default.
+    let first_run = !AppConfig::config_path()
+        .map(|p| p.exists())
+        .unwrap_or(false);
+
     // Load config early to check developer_mode for log level
     let config = AppConfig::load()?;
 
@@ -65,6 +70,21 @@ fn main() -> Result<()> {
 
     info!("Duper Disper v{} starting", env!("CARGO_PKG_VERSION"));
     info!("Config loaded: stt={:?}, hotkey={}, developer_mode={}", config.stt_backend, config.hotkey, config.developer_mode);
+
+    // macOS: become a menu-bar (accessory) app so the tray icon and its menu
+    // work without a Dock icon, and prompt for the Accessibility permission
+    // required for global hotkeys (rdev) and text insertion (enigo).
+    #[cfg(target_os = "macos")]
+    {
+        duper_disper::macos::init_menubar_app();
+        if !duper_disper::macos::ensure_accessibility_permission() {
+            warn!(
+                "Accessibility permission not granted yet. The hotkey and text \
+                 insertion will not work until it is enabled in System Settings \
+                 > Privacy & Security > Accessibility."
+            );
+        }
+    }
 
     // Initialize transcriber based on configured backend
     let transcriber = match config.stt_backend {
@@ -110,7 +130,7 @@ fn main() -> Result<()> {
     info!("Registered hotkey: {}", config.hotkey);
 
     // Set up system tray
-    let tray = SystemTray::new()?;
+    let mut tray = SystemTray::new()?;
 
     // Create tokio runtime for async operations (LLM calls)
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -124,12 +144,10 @@ fn main() -> Result<()> {
 
     start_single_instance_ipc(&_instance_lock, settings_child.clone());
 
-    #[cfg(target_os = "macos")]
-    settings::open_settings_window(&settings_child);
-
-    // If launched with --show-settings, open settings window on startup
-    // (unlike --settings, the main app keeps running)
-    if std::env::args().any(|a| a == "--show-settings") {
+    // Open the settings window automatically on first run (onboarding) or when
+    // explicitly requested via --show-settings. We deliberately do NOT reopen it
+    // on every launch — the app lives in the tray/menu bar.
+    if first_run || std::env::args().any(|a| a == "--show-settings") {
         settings::open_settings_window(&settings_child);
     }
 
@@ -149,12 +167,18 @@ fn main() -> Result<()> {
                 recording_buffer.start();
                 overlay.show_recording();
                 tray.set_recording(true);
+                if config.sound_feedback {
+                    play_feedback(true);
+                }
                 info!("Recording started");
             } else if !pressed && is_recording.load(Ordering::SeqCst) {
                 // Stop recording
                 is_recording.store(false, Ordering::SeqCst);
                 recording_buffer.stop();
                 tray.set_recording(false);
+                if config.sound_feedback {
+                    play_feedback(false);
+                }
                 info!("Recording stopped");
 
                 // Process the recording
@@ -399,7 +423,41 @@ fn pump_messages() {
     }
 }
 
-#[cfg(not(windows))]
+/// Drain pending AppKit events so the tray icon and its menu work on macOS.
+/// The status item delivers menu clicks via the AppKit run loop, which we pump
+/// once per main-loop tick.
+#[cfg(target_os = "macos")]
 fn pump_messages() {
-    // No-op on non-Windows platforms
+    duper_disper::macos::pump_events();
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
+fn pump_messages() {
+    // No-op on other platforms
+}
+
+/// Play a short sound cue when recording starts/stops.
+fn play_feedback(start: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        // Built-in system sounds via afplay (spawned, non-blocking).
+        let sound = if start {
+            "/System/Library/Sounds/Tink.aiff"
+        } else {
+            "/System/Library/Sounds/Pop.aiff"
+        };
+        let _ = std::process::Command::new("afplay").arg(sound).spawn();
+    }
+    #[cfg(windows)]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{MessageBeep, MB_ICONASTERISK, MB_OK};
+        let kind = if start { MB_OK } else { MB_ICONASTERISK };
+        unsafe {
+            let _ = MessageBeep(kind);
+        }
+    }
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    {
+        let _ = start;
+    }
 }

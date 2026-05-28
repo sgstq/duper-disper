@@ -68,6 +68,27 @@ windows = { version = "0.58", features = [
 ] }
 screenshots = "0.8"
 
+# macOS-specific APIs (menu-bar app lifecycle, AppKit event pump, active-window
+# context). Versions match those pulled in transitively by tray-icon 0.19 to
+# avoid duplicate objc2 trees. CoreFoundation/CoreGraphics/Accessibility are
+# accessed via direct C FFI in src/macos.rs (no extra crates needed).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = [
+    "NSString",
+    "NSDate",
+    "NSRunLoop",
+    "NSThread",
+    "NSObjCRuntime",
+] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSApplication",
+    "NSResponder",
+    "NSEvent",
+    "NSRunningApplication",
+    "NSWorkspace",
+] }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 wiremock = "0.6"

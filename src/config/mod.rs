@@ -199,9 +199,74 @@ impl AppConfig {
         unsafe { let _ = RegCloseKey(hkey); }
     }
 
-    #[cfg(not(windows))]
+    /// Sync the macOS LaunchAgent with the config value so the app can start
+    /// automatically when the user logs in.
+    #[cfg(target_os = "macos")]
     fn apply_auto_start(&self) {
-        // No-op on non-Windows platforms
+        let Some(home) = dirs::home_dir() else {
+            tracing::warn!("Cannot determine home dir for auto-start");
+            return;
+        };
+        let agents_dir = home.join("Library/LaunchAgents");
+        let plist_path = agents_dir.join("com.sgstq.duper-disper.plist");
+
+        if self.auto_start {
+            let exe = match std::env::current_exe() {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::warn!("Failed to determine exe path for auto-start: {}", e);
+                    return;
+                }
+            };
+            if let Err(e) = std::fs::create_dir_all(&agents_dir) {
+                tracing::warn!("Failed to create LaunchAgents dir: {}", e);
+                return;
+            }
+            // Escape XML special characters in the executable path.
+            let exe_str = exe.to_string_lossy();
+            let exe_escaped = exe_str
+                .replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;");
+            let plist = format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sgstq.duper-disper</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{exe_escaped}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>
+"#
+            );
+            if let Err(e) = std::fs::write(&plist_path, plist) {
+                tracing::warn!("Failed to write LaunchAgent plist: {}", e);
+            } else {
+                info!("Auto-start LaunchAgent written to {:?}", plist_path);
+            }
+        } else if plist_path.exists() {
+            // Best-effort unload, then remove the plist.
+            let _ = std::process::Command::new("launchctl")
+                .arg("unload")
+                .arg(&plist_path)
+                .output();
+            if let Err(e) = std::fs::remove_file(&plist_path) {
+                tracing::debug!("Failed to remove LaunchAgent plist: {}", e);
+            }
+        }
+    }
+
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    fn apply_auto_start(&self) {
+        // No-op on other platforms
     }
 }
 

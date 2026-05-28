@@ -9,10 +9,11 @@ pub enum TrayCommand {
 }
 
 pub struct SystemTray {
-    _tray: TrayIcon,
+    tray: TrayIcon,
     settings_id: MenuItem,
     toggle_refinement_id: MenuItem,
     quit_id: MenuItem,
+    recording: bool,
 }
 
 impl SystemTray {
@@ -27,22 +28,20 @@ impl SystemTray {
         menu.append(&toggle_item)?;
         menu.append(&quit_item)?;
 
-        // Create a simple icon (red circle to indicate "recording ready")
-        let icon = create_default_icon();
-
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_tooltip("Duper Disper - Push to Talk")
-            .with_icon(icon)
+            .with_icon(create_icon(false))
             .build()?;
 
         info!("System tray icon created");
 
         Ok(Self {
-            _tray: tray,
+            tray,
             settings_id: settings_item,
             toggle_refinement_id: toggle_item,
             quit_id: quit_item,
+            recording: false,
         })
     }
 
@@ -62,18 +61,38 @@ impl SystemTray {
         None
     }
 
-    pub fn set_recording(&self, recording: bool) {
-        // Could update icon color here (green = recording, red = idle)
-        let _ = recording;
+    /// Reflect the recording state in the tray icon and tooltip.
+    /// Red dot = recording, blue dot = idle. This is the primary visual
+    /// feedback on platforms without a floating overlay (macOS/Linux).
+    pub fn set_recording(&mut self, recording: bool) {
+        if recording == self.recording {
+            return;
+        }
+        self.recording = recording;
+        if let Err(e) = self.tray.set_icon(Some(create_icon(recording))) {
+            tracing::warn!("Failed to update tray icon: {}", e);
+        }
+        let tooltip = if recording {
+            "Duper Disper - Recording..."
+        } else {
+            "Duper Disper - Push to Talk"
+        };
+        let _ = self.tray.set_tooltip(Some(tooltip));
     }
 }
 
-fn create_default_icon() -> tray_icon::Icon {
-    // Create a simple 32x32 RGBA icon (blue circle)
+/// Build a 32x32 RGBA circle icon. Red when recording, blue when idle.
+fn create_icon(recording: bool) -> tray_icon::Icon {
     let size = 32;
     let mut rgba = vec![0u8; size * size * 4];
     let center = size as f32 / 2.0;
     let radius = center - 2.0;
+
+    let (r, g, b) = if recording {
+        (229u8, 53u8, 53u8) // #E53535 red
+    } else {
+        (66u8, 133u8, 244u8) // #4285F4 blue
+    };
 
     for y in 0..size {
         for x in 0..size {
@@ -83,13 +102,16 @@ fn create_default_icon() -> tray_icon::Icon {
             let idx = (y * size + x) * 4;
 
             if dist <= radius {
-                rgba[idx] = 66;      // R
-                rgba[idx + 1] = 133; // G
-                rgba[idx + 2] = 244; // B
-                rgba[idx + 3] = 255; // A
+                // Anti-alias the edge for a smoother look.
+                let alpha = ((radius - dist).clamp(0.0, 1.0) * 255.0) as u8;
+                rgba[idx] = r;
+                rgba[idx + 1] = g;
+                rgba[idx + 2] = b;
+                rgba[idx + 3] = if dist <= radius - 1.0 { 255 } else { alpha };
             }
         }
     }
 
-    tray_icon::Icon::from_rgba(rgba, size as u32, size as u32).unwrap()
+    tray_icon::Icon::from_rgba(rgba, size as u32, size as u32)
+        .expect("valid RGBA tray icon")
 }

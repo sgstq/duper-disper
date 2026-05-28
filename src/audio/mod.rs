@@ -178,8 +178,14 @@ pub fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
         return samples.to_vec();
     }
 
+    if samples.is_empty() {
+        return Vec::new();
+    }
+
     let ratio = from_rate as f64 / to_rate as f64;
-    let output_len = (samples.len() as f64 / ratio) as usize;
+    // Round to the nearest sample count, and always produce at least one sample
+    // for non-empty input (a very short clip must not vanish on downsample).
+    let output_len = ((samples.len() as f64 / ratio).round() as usize).max(1);
     let mut output = Vec::with_capacity(output_len);
 
     for i in 0..output_len {
