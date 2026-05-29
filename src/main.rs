@@ -450,7 +450,8 @@ fn play_feedback(start: bool) {
     }
     #[cfg(windows)]
     {
-        use windows::Win32::UI::WindowsAndMessaging::{MessageBeep, MB_ICONASTERISK, MB_OK};
+        use windows::Win32::System::Diagnostics::Debug::MessageBeep;
+        use windows::Win32::UI::WindowsAndMessaging::{MB_ICONASTERISK, MB_OK};
         let kind = if start { MB_OK } else { MB_ICONASTERISK };
         unsafe {
             let _ = MessageBeep(kind);
