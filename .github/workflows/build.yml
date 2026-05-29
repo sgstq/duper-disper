@@ -16,6 +16,13 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Serialize release-producing runs per ref so two pushes to main can't race in
+# `prepare`/`release` and compute the same version or clobber each other's
+# release. cancel-in-progress is false so an in-flight release is never killed.
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: false
+
 # Releases are owned by this workflow: git tags are the single source of truth
 # for the version. On every push to main/master the version is auto-bumped from
 # the latest v* tag (patch by default; choose minor/major via "Run workflow"),
@@ -43,25 +50,36 @@ jobs:
           [ -z "$LATEST" ] && LATEST="0.0.0"
           IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST"
 
-          IS_RELEASE=false
-          if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            IS_RELEASE=true
-            BUMP="${{ github.event.inputs.bump }}"
-            BUMP="${BUMP:-patch}"
-            case "$BUMP" in
+          # Apply a bump level to MAJOR/MINOR/PATCH.
+          bump() {
+            case "$1" in
               major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
               minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
               *)     PATCH=$((PATCH + 1)) ;;
             esac
+          }
+
+          if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            IS_RELEASE=true
+            BUMP="${{ github.event.inputs.bump }}"
+            BUMP="${BUMP:-patch}"
+            bump "$BUMP"
             VERSION="${MAJOR}.${MINOR}.${PATCH}"
-            # Never collide with an existing tag (e.g. re-runs): keep bumping patch.
+            # On collision (e.g. a re-run after the tag was created) keep bumping
+            # the SAME component the user asked for, so a repeated major stays a
+            # major (3.0.0, 4.0.0, ...) rather than degrading to a patch.
             while git rev-parse "v${VERSION}" >/dev/null 2>&1; do
-              PATCH=$((PATCH + 1))
+              bump "$BUMP"
               VERSION="${MAJOR}.${MINOR}.${PATCH}"
             done
           else
-            # Non-release builds (PRs, claude/** branches) just label artifacts.
-            VERSION="${MAJOR}.${MINOR}.${PATCH}"
+            # Non-release builds (PRs, claude/** branches): mark as a pre-release
+            # of the next patch, disambiguated by short SHA, so artifacts are
+            # never mistaken for a published release. The "g" prefix keeps the
+            # identifier valid semver even if the SHA is all digits.
+            IS_RELEASE=false
+            SHORT=$(git rev-parse --short=7 HEAD)
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-dev.g${SHORT}"
           fi
 
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
