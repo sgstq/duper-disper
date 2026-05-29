@@ -11,7 +11,7 @@ Download the latest release from the [Releases page](https://github.com/sgstq/du
 - **Portable** — `duper-disper-x.x.x-portable.zip` — standalone executable, no installation needed
 
 **macOS**
-- **App bundle** — `duper-disper-x.x.x-macos-app.zip` — unzip and drag `Duper Disper.app` to `/Applications`
+- **Disk image** — `duper-disper-x.x.x-macos.dmg` — open it and drag `Duper Disper.app` into the `Applications` folder
 
 On macOS the app runs as a menu-bar (status-bar) app with no Dock icon. On first
 launch it will prompt for **Accessibility** permission (needed to detect the
