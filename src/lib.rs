@@ -4,6 +4,9 @@ pub mod hotkey;
 pub mod insertion;
 pub mod refinement;
 
+#[cfg(target_os = "macos")]
+pub mod macos;
+
 #[cfg(feature = "audio-capture")]
 pub mod audio;
 

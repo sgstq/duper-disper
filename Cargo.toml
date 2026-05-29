@@ -4,6 +4,14 @@ version = "0.2.0"
 edition = "2021"
 description = "Fast push-to-talk voice transcription and refinement tool"
 
+# The binary is a GUI tray app and needs all three default features. Declaring
+# them as required-features means `cargo build --no-default-features` cleanly
+# skips the binary (and just builds the library) instead of failing to compile.
+[[bin]]
+name = "duper-disper"
+path = "src/main.rs"
+required-features = ["ui", "audio-capture", "local-stt"]
+
 [features]
 default = ["ui", "audio-capture", "local-stt"]
 ui = ["dep:tray-icon", "dep:eframe", "dep:winit"]
@@ -64,9 +72,33 @@ windows = { version = "0.58", features = [
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
     "Win32_System_Registry",
+    "Win32_System_Diagnostics_Debug",
     "Win32_Security",
 ] }
 screenshots = "0.8"
+
+# macOS-specific APIs (menu-bar app lifecycle, AppKit event pump, active-window
+# context). Pinned to the objc2 0.6 / objc2-*-0.3 family that tray-icon 0.19
+# already compiles, so we reuse those crates instead of adding another modern
+# objc2 copy. (Older objc2 0.5.x may still appear in the lockfile via unrelated
+# deps like cocoa/core-graphics; that's separate.) CoreFoundation /
+# CoreGraphics / Accessibility are accessed via direct C FFI in src/macos.rs.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = [
+    "NSString",
+    "NSDate",
+    "NSRunLoop",
+    "NSThread",
+    "NSObjCRuntime",
+] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSApplication",
+    "NSResponder",
+    "NSEvent",
+    "NSRunningApplication",
+    "NSWorkspace",
+] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

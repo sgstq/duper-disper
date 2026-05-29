@@ -2,7 +2,7 @@
 use anyhow::Result;
 #[cfg(windows)]
 use tracing::debug;
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(target_os = "macos")))]
 use tracing::warn;
 
 /// The detected category of the active application.
@@ -205,13 +205,17 @@ pub fn capture_context(include_screenshot: bool) -> CapturedContext {
     {
         capture_context_windows(include_screenshot)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        crate::macos::capture_context(include_screenshot)
+    }
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     {
         capture_context_stub(include_screenshot)
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(target_os = "macos")))]
 fn capture_context_stub(_include_screenshot: bool) -> CapturedContext {
     warn!("Context capture not implemented for this platform");
     CapturedContext::default()
@@ -336,7 +340,7 @@ mod tests {
         assert!(debug.contains("CapturedContext"));
     }
 
-    #[cfg(not(windows))]
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     #[test]
     fn capture_context_stub_returns_empty() {
         let ctx = capture_context(false);
@@ -346,7 +350,7 @@ mod tests {
         assert!(ctx.screenshot_base64.is_none());
     }
 
-    #[cfg(not(windows))]
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     #[test]
     fn capture_context_stub_ignores_screenshot_flag() {
         let ctx = capture_context(true);
