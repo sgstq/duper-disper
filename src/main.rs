@@ -446,7 +446,11 @@ fn play_feedback(start: bool) {
         } else {
             "/System/Library/Sounds/Pop.aiff"
         };
-        let _ = std::process::Command::new("afplay").arg(sound).spawn();
+        if let Ok(mut child) = std::process::Command::new("afplay").arg(sound).spawn() {
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
     }
     #[cfg(windows)]
     {
