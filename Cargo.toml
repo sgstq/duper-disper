@@ -4,6 +4,14 @@ version = "0.2.0"
 edition = "2021"
 description = "Fast push-to-talk voice transcription and refinement tool"
 
+# The binary is a GUI tray app and needs all three default features. Declaring
+# them as required-features means `cargo build --no-default-features` cleanly
+# skips the binary (and just builds the library) instead of failing to compile.
+[[bin]]
+name = "duper-disper"
+path = "src/main.rs"
+required-features = ["ui", "audio-capture", "local-stt"]
+
 [features]
 default = ["ui", "audio-capture", "local-stt"]
 ui = ["dep:tray-icon", "dep:eframe", "dep:winit"]
