@@ -24,6 +24,18 @@ impl OverlayState {
             Self::Hidden => "",
         }
     }
+
+    /// Reconstruct the state from the `u8` stored in the shared atomic.
+    /// Used by the Windows WNDPROC to read the current render state.
+    #[cfg(windows)]
+    fn from_u8(value: u8) -> Self {
+        match value {
+            1 => Self::Recording,
+            2 => Self::Transcribing,
+            3 => Self::Refining,
+            _ => Self::Hidden,
+        }
+    }
 }
 
 // ── Windows implementation ──────────────────────────────────────────────────
