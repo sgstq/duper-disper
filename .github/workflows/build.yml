@@ -190,13 +190,19 @@ jobs:
           echo "----- Final Info.plist -----"
           /usr/libexec/PlistBuddy -c "Print" "${PLIST}"
 
-      - name: Package app bundle
+      - name: Create DMG
         shell: bash
         run: |
-          mkdir -p installer/output
-          ditto -c -k --sequesterRsrc --keepParent \
-            "target/release/bundle/osx/Duper Disper.app" \
-            "installer/output/duper-disper-${{ needs.prepare.outputs.version }}-macos-app.zip"
+          mkdir -p installer/output dmg-stage
+          cp -R "target/release/bundle/osx/Duper Disper.app" dmg-stage/
+          # Drag-to-install: a symlink so the DMG window shows /Applications.
+          ln -s /Applications dmg-stage/Applications
+          hdiutil create \
+            -volname "Duper Disper" \
+            -srcfolder dmg-stage \
+            -fs HFS+ \
+            -format UDZO -ov \
+            "installer/output/duper-disper-${{ needs.prepare.outputs.version }}-macos.dmg"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
